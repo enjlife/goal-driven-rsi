@@ -41,11 +41,8 @@ export async function runAgent(
       return { message: reply, turns: turn + 1 };
     }
 
-    // Announce every call up front, then run them concurrently.
-    for (const call of reply.tool_calls) {
-      opts.onEvent?.({ type: 'tool_call', id: call.id, name: call.name, arguments: call.arguments });
-    }
-
+    // Run all tool calls concurrently, then report each call together with its
+    // result (in original order) so the display and the JSONL stream pair them up.
     const results = await Promise.all(
       reply.tool_calls.map(async (call) => {
         const result = await executeTool(call, opts.toolContext);
@@ -53,10 +50,10 @@ export async function runAgent(
       }),
     );
 
-    // Preserve order when appending results back to the conversation.
     for (const { call, result } of results) {
+      opts.onEvent?.({ type: 'tool_call', id: call.id, name: call.name, arguments: call.arguments });
       const output = truncate(result.ok ? result.output : result.error, opts.maxToolResultChars);
-      opts.onEvent?.({ type: 'tool_result', id: call.id, name: call.name, ok: result.ok, output });
+      opts.onEvent?.({ type: 'tool_result', id: call.id, name: call.name, ok: result.ok, arguments: call.arguments, output });
       messages.push({
         role: 'tool',
         tool_call_id: call.id,

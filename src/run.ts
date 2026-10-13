@@ -65,17 +65,18 @@ export function printHuman(
     case 'tool_call':
       err.write(`${toolTag} ${e.name} ${dim(e.arguments)}\n`);
       break;
-    case 'tool_result':
-      if (e.ok) {
-        const body = truncate(e.output, MAX_RESULT_CHARS)
-          .split('\n')
-          .map((l) => `  ${l}`)
-          .join('\n');
-        err.write(`${dim(body)}\n`);
-      } else {
-        err.write(`${errorTag} ${e.name} failed: ${truncate(e.output, MAX_RESULT_CHARS)}\n`);
-      }
+    case 'tool_result': {
+      const resultTag = e.ok
+        ? (color ? '\x1b[1;30;42m[tool result]\x1b[0m' : '[tool result]')
+        : (color ? '\x1b[1;37;41m[tool result]\x1b[0m' : '[tool result]');
+      err.write(`${resultTag} ${e.name} ${dim(e.arguments)}\n`);
+      const body = truncate(e.output, MAX_RESULT_CHARS)
+        .split('\n')
+        .map((l) => `  ${l}`)
+        .join('\n');
+      err.write(`${dim(body)}\n`);
       break;
+    }
     case 'error':
       err.write(`${errorTag} ${e.message}\n`);
       break;

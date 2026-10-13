@@ -51,6 +51,6 @@ export type AgentEvent =
   | { type: 'request'; role: 'user' | 'system'; content: string }
   | { type: 'assistant'; content: string | null; tool_calls: ToolCall[] }
   | { type: 'tool_call'; id: string; name: string; arguments: string }
-  | { type: 'tool_result'; id: string; name: string; ok: boolean; output: string }
+  | { type: 'tool_result'; id: string; name: string; ok: boolean; arguments: string; output: string }
   | { type: 'done'; content: string | null }
   | { type: 'error'; message: string };
