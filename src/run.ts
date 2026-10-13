@@ -2,12 +2,15 @@ import type { AgentEvent, AssistantMessage, Message, ToolDef } from './types.js'
 import type { ChatProvider } from './providers/provider.js';
 import type { ToolContext } from './tools/registry.js';
 import { runAgent } from './loop.js';
+import { truncate } from './util.js';
 
 export interface RunEnv {
   provider: ChatProvider;
   tools: ToolDef[];
   toolContext: ToolContext;
   maxTurns: number;
+  maxContextTokens: number;
+  maxToolResultChars: number;
   systemPrompt: string;
 }
 
@@ -28,6 +31,8 @@ export async function runTurn(
   const { message } = await runAgent(env.provider, env.tools, messages, {
     maxTurns: env.maxTurns,
     toolContext: env.toolContext,
+    maxContextTokens: env.maxContextTokens,
+    maxToolResultChars: env.maxToolResultChars,
     onEvent,
   });
   return message;
@@ -41,11 +46,6 @@ const MAX_RESULT_CHARS = 500;
 
 function isColor(stream: NodeJS.WritableStream): boolean {
   return (stream as { isTTY?: boolean }).isTTY === true;
-}
-
-function truncate(s: string, max: number): string {
-  if (s.length <= max) return s;
-  return `${s.slice(0, max)}… (truncated)`;
 }
 
 export function printHuman(

@@ -16,6 +16,16 @@ export class MockProvider implements ChatProvider {
     const toolRan = messages.some((m) => m.role === 'tool');
     const hasShell = tools.some((t) => t.name === 'run_shell');
 
+    if (!toolRan && hasShell && /parallel/i.test(text)) {
+      return {
+        content: null,
+        tool_calls: [
+          { id: 'mock-1', name: 'run_shell', arguments: JSON.stringify({ command: 'echo first' }) },
+          { id: 'mock-2', name: 'run_shell', arguments: JSON.stringify({ command: 'echo second' }) },
+        ],
+      };
+    }
+
     if (!toolRan && hasShell && /shell|run|echo|command/i.test(text)) {
       return {
         content: null,

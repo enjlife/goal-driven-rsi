@@ -9,6 +9,9 @@ export interface Config {
   maxTurns: number;
   shellTimeoutMs: number;
   systemPrompt: string;
+  retry: { maxRetries: number; baseMs: number };
+  maxContextTokens: number;
+  maxToolResultChars: number;
   openai: { apiKey?: string; baseUrl: string; model: string };
   anthropic: { apiKey?: string; authToken?: string; baseUrl: string; model: string; maxTokens: number };
 }
@@ -94,6 +97,12 @@ export function loadConfig(overrides: ConfigOverrides = {}): Config {
     maxTurns: overrides.maxTurns ?? intEnv('AGENT_MAX_TURNS', 8),
     shellTimeoutMs: intEnv('AGENT_SHELL_TIMEOUT_MS', 30000),
     systemPrompt: process.env.AGENT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT,
+    retry: {
+      maxRetries: intEnv('AGENT_MAX_RETRIES', 3),
+      baseMs: intEnv('AGENT_RETRY_BASE_MS', 1000),
+    },
+    maxContextTokens: intEnv('AGENT_MAX_CONTEXT_TOKENS', 128000),
+    maxToolResultChars: intEnv('AGENT_MAX_TOOL_RESULT_CHARS', 8000),
     openai,
     anthropic,
   };

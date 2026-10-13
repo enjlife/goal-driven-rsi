@@ -1,5 +1,7 @@
 import type { AssistantMessage, Message, ToolCall, ToolDef } from '../types.js';
 import type { ChatProvider } from './provider.js';
+import { ProviderError, isRetryableStatus, parseRetryAfterMs } from '../errors.js';
+import { withRetry, type RetryOptions } from '../retry.js';
 
 interface AnthropicConfig {
   apiKey?: string;
@@ -76,9 +78,16 @@ function toAnthropicMessages(messages: Message[]): { system: string; msgs: Recor
 export class AnthropicProvider implements ChatProvider {
   readonly name = 'anthropic';
 
-  constructor(private readonly cfg: AnthropicConfig) {}
+  constructor(
+    private readonly cfg: AnthropicConfig,
+    private readonly retry: RetryOptions,
+  ) {}
 
   async chat(messages: Message[], tools: ToolDef[]): Promise<AssistantMessage> {
+    return withRetry(() => this.request(messages, tools), this.retry);
+  }
+
+  private async request(messages: Message[], tools: ToolDef[]): Promise<AssistantMessage> {
     const { system, msgs } = toAnthropicMessages(messages);
 
     const body: Record<string, unknown> = {
@@ -102,17 +111,33 @@ export class AnthropicProvider implements ChatProvider {
     if (this.cfg.apiKey) headers['x-api-key'] = this.cfg.apiKey;
     else if (this.cfg.authToken) headers['authorization'] = `Bearer ${this.cfg.authToken}`;
 
-    const res = await fetch(`${this.cfg.baseUrl}/messages`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Anthropic HTTP ${res.status}: ${text.slice(0, 500)}`);
+    let res: Response;
+    try {
+      res = await fetch(`${this.cfg.baseUrl}/messages`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      throw new ProviderError(`network error: ${(e as Error).message}`, { retryable: true });
     }
 
-    const data = (await res.json()) as { content: AnthropicContentBlock[] };
+    if (!res.ok) {
+      const text = await res.text();
+      throw new ProviderError(`Anthropic HTTP ${res.status}: ${text.slice(0, 500)}`, {
+        status: res.status,
+        retryable: isRetryableStatus(res.status),
+        retryAfterMs: parseRetryAfterMs(res.headers.get('retry-after')),
+      });
+    }
+
+    let data: { content: AnthropicContentBlock[] };
+    try {
+      data = (await res.json()) as typeof data;
+    } catch (e) {
+      throw new ProviderError(`Anthropic returned invalid JSON: ${(e as Error).message}`, { retryable: false });
+    }
+
     const contentParts: string[] = [];
     const tool_calls: ToolCall[] = [];
 

@@ -1,5 +1,7 @@
 import type { AssistantMessage, Message, ToolCall, ToolDef } from '../types.js';
 import type { ChatProvider } from './provider.js';
+import { ProviderError, isRetryableStatus, parseRetryAfterMs } from '../errors.js';
+import { withRetry, type RetryOptions } from '../retry.js';
 
 interface OpenAIConfig {
   apiKey?: string;
@@ -36,9 +38,16 @@ function toOpenAIMessages(messages: Message[]): Record<string, unknown>[] {
 export class OpenAIProvider implements ChatProvider {
   readonly name = 'openai';
 
-  constructor(private readonly cfg: OpenAIConfig) {}
+  constructor(
+    private readonly cfg: OpenAIConfig,
+    private readonly retry: RetryOptions,
+  ) {}
 
   async chat(messages: Message[], tools: ToolDef[]): Promise<AssistantMessage> {
+    return withRetry(() => this.request(messages, tools), this.retry);
+  }
+
+  private async request(messages: Message[], tools: ToolDef[]): Promise<AssistantMessage> {
     const body: Record<string, unknown> = {
       model: this.cfg.model,
       messages: toOpenAIMessages(messages),
@@ -51,24 +60,38 @@ export class OpenAIProvider implements ChatProvider {
       body.tool_choice = 'auto';
     }
 
-    const res = await fetch(`${this.cfg.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${this.cfg.apiKey ?? ''}`,
-      },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`OpenAI HTTP ${res.status}: ${text.slice(0, 500)}`);
+    let res: Response;
+    try {
+      res = await fetch(`${this.cfg.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${this.cfg.apiKey ?? ''}`,
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      throw new ProviderError(`network error: ${(e as Error).message}`, { retryable: true });
     }
 
-    const data = (await res.json()) as {
-      choices: { message: { content?: string | null; tool_calls?: unknown[] } }[];
-    };
+    if (!res.ok) {
+      const text = await res.text();
+      throw new ProviderError(`OpenAI HTTP ${res.status}: ${text.slice(0, 500)}`, {
+        status: res.status,
+        retryable: isRetryableStatus(res.status),
+        retryAfterMs: parseRetryAfterMs(res.headers.get('retry-after')),
+      });
+    }
+
+    let data: { choices: { message: { content?: string | null; tool_calls?: unknown[] } }[] };
+    try {
+      data = (await res.json()) as typeof data;
+    } catch (e) {
+      throw new ProviderError(`OpenAI returned invalid JSON: ${(e as Error).message}`, { retryable: false });
+    }
+
     const msg = data.choices[0]?.message;
-    if (!msg) throw new Error('OpenAI response missing choices[0].message');
+    if (!msg) throw new ProviderError('OpenAI response missing choices[0].message', { retryable: false });
 
     const tool_calls: ToolCall[] = (msg.tool_calls ?? []).map((tc) => {
       const t = tc as { id: string; function: { name: string; arguments: string } };

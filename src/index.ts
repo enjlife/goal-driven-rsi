@@ -138,6 +138,8 @@ async function main(): Promise<void> {
     tools,
     toolContext: { cwd: config.workdir, shellTimeoutMs: config.shellTimeoutMs },
     maxTurns: config.maxTurns,
+    maxContextTokens: config.maxContextTokens,
+    maxToolResultChars: config.maxToolResultChars,
     systemPrompt: config.systemPrompt,
   };
 

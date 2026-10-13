@@ -12,9 +12,9 @@ export interface ChatProvider {
 export function createProvider(kind: ProviderKind, config: Config): ChatProvider {
   switch (kind) {
     case 'openai':
-      return new OpenAIProvider(config.openai);
+      return new OpenAIProvider(config.openai, config.retry);
     case 'anthropic':
-      return new AnthropicProvider(config.anthropic);
+      return new AnthropicProvider(config.anthropic, config.retry);
     case 'mock':
       return new MockProvider();
   }

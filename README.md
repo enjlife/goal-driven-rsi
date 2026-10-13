@@ -89,6 +89,7 @@ See `.env.example` for the full annotated list:
 
 - Provider: `AGENT_PROVIDER`, `OPENAI_API_KEY`/`OPENAI_BASE_URL`/`OPENAI_MODEL`, `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL`/`ANTHROPIC_MODEL`/`ANTHROPIC_MAX_TOKENS`
 - Behaviour: `AGENT_WORKDIR`, `AGENT_MAX_TURNS`, `AGENT_SHELL_TIMEOUT_MS`, `AGENT_SYSTEM_PROMPT`
+- Retry & context: `AGENT_MAX_RETRIES`, `AGENT_RETRY_BASE_MS`, `AGENT_MAX_CONTEXT_TOKENS`, `AGENT_MAX_TOOL_RESULT_CHARS`
 
 `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL` let you point at compatible endpoints (e.g. a local or proxied gateway).
 
@@ -103,6 +104,10 @@ src/
   loop.ts           the agent loop (model <-> tools until done or maxTurns)
   jsonl.ts          event encode/decode + transcript writer
   repl.ts           readline REPL
+  context.ts        token estimation + sliding-window history trimming
+  retry.ts          exponential-backoff retry for retryable provider errors
+  errors.ts         ProviderError (status + retryable classification)
+  util.ts           truncate / sleep helpers
   providers/        provider.ts (interface+factory), openai.ts, anthropic.ts, mock.ts
   tools/            registry.ts, shell.ts, files.ts
 ```
@@ -111,4 +116,7 @@ src/
 
 - Zero runtime dependencies: native `fetch`, `node:child_process`, `node:readline`, `node:util.parseArgs`.
 - Non-streaming requests (one HTTP call per turn) for minimalism; streaming is a later enhancement.
+- Multiple tool calls in one turn run **in parallel** (`Promise.all`); results are fed back in order.
+- Retryable API errors (429/5xx/network) retry with exponential backoff + jitter; non-retryable errors (400/401/403) fail fast.
+- History is trimmed with a sliding window (drop oldest user-turns) once the approximate token count nears the context budget; oversized `tool_result` output is truncated before reaching the model.
 - The Anthropic provider preserves and echoes back thinking blocks so multi-turn history stays append-only.
