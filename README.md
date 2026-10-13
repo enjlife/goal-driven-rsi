@@ -28,7 +28,7 @@ Three minimal tools, defined with JSON Schema and dispatched by the loop:
 
 | Tool | What it does |
 |---|---|
-| `run_shell` | Run a single shell command in `AGENT_WORKDIR`; returns stdout/stderr/exit code. No PTY, no state between calls, `AGENT_SHELL_TIMEOUT_MS` default 30s. |
+| `run_shell` | Run a single shell command in `AGENT_WORKDIR`; returns stdout/stderr/exit code. A non-zero exit code or timeout is reported as a tool failure. No PTY, no state between calls, `AGENT_SHELL_TIMEOUT_MS` default 30s. |
 | `read_file` | Read a UTF-8 text file (relative to workdir, `..` escapes rejected, 1 MiB cap). |
 | `write_file` | Create/overwrite a UTF-8 text file (relative to workdir, `..` escapes rejected). |
 

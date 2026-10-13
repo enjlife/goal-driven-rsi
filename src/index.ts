@@ -9,6 +9,7 @@ import { toolDefs } from './tools/registry.js';
 import { newMessages, runTurn, printHuman, type RunEnv } from './run.js';
 import { runRepl } from './repl.js';
 import { Transcript, writeEventTo, parseIncomingLine } from './jsonl.js';
+import { strictInt } from './util.js';
 import type { AgentEvent } from './types.js';
 
 const HELP = `goal-driven-rsi — minimal local terminal agent
@@ -65,14 +66,16 @@ function parseCli(): CliArgs {
   if (provider && provider !== 'openai' && provider !== 'anthropic' && provider !== 'mock') {
     throw new Error(`unknown --provider "${provider}" (expected openai|anthropic|mock)`);
   }
-  const maxTurns = values['max-turns'] ? Number.parseInt(values['max-turns'] as string, 10) : undefined;
+  const maxTurns = values['max-turns'] !== undefined
+    ? strictInt(values['max-turns'] as string, '--max-turns', 1)
+    : undefined;
 
   return {
     prompt: values.prompt as string | undefined,
     jsonl: values.jsonl === true,
     provider,
     model: values.model as string | undefined,
-    maxTurns: maxTurns && Number.isFinite(maxTurns) ? maxTurns : undefined,
+    maxTurns,
     noTools: values['no-tools'] === true,
     session: values.session as string | undefined,
     noSession: values['no-session'] === true,
@@ -160,6 +163,7 @@ async function main(): Promise<void> {
       await runTurn(env, newMessages(env), args.prompt, onEvent);
     } catch (e) {
       printHuman({ type: 'error', message: (e as Error).message });
+      process.exitCode = 1;
     }
     transcript?.close();
     return;

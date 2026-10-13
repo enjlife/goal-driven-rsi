@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { strictInt } from './util.js';
 
 export type ProviderKind = 'openai' | 'anthropic' | 'mock';
 
@@ -42,11 +43,11 @@ export function loadDotEnv(path = '.env'): void {
   }
 }
 
-function intEnv(name: string, fallback: number): number {
+/** Read an integer env var; unset/empty falls back, otherwise must be a valid int >= min. */
+function intEnv(name: string, fallback: number, min = 0): number {
   const raw = process.env[name];
-  if (!raw) return fallback;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) ? n : fallback;
+  if (raw === undefined || raw.trim() === '') return fallback;
+  return strictInt(raw.trim(), name, min);
 }
 
 export interface ConfigOverrides {
@@ -81,7 +82,7 @@ export function loadConfig(overrides: ConfigOverrides = {}): Config {
     authToken: process.env.ANTHROPIC_AUTH_TOKEN,
     baseUrl: (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com/v1').replace(/\/$/, ''),
     model: overrides.model || process.env.ANTHROPIC_MODEL || 'claude-opus-5-5',
-    maxTokens: intEnv('ANTHROPIC_MAX_TOKENS', 16000),
+    maxTokens: intEnv('ANTHROPIC_MAX_TOKENS', 16000, 1),
   };
 
   if (provider === 'openai' && !openai.apiKey) {
@@ -94,15 +95,15 @@ export function loadConfig(overrides: ConfigOverrides = {}): Config {
   return {
     provider,
     workdir: workdirRaw ? resolve(workdirRaw) : process.cwd(),
-    maxTurns: overrides.maxTurns ?? intEnv('AGENT_MAX_TURNS', 8),
-    shellTimeoutMs: intEnv('AGENT_SHELL_TIMEOUT_MS', 30000),
+    maxTurns: overrides.maxTurns ?? intEnv('AGENT_MAX_TURNS', 8, 1),
+    shellTimeoutMs: intEnv('AGENT_SHELL_TIMEOUT_MS', 30000, 1),
     systemPrompt: process.env.AGENT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT,
     retry: {
-      maxRetries: intEnv('AGENT_MAX_RETRIES', 3),
-      baseMs: intEnv('AGENT_RETRY_BASE_MS', 1000),
+      maxRetries: intEnv('AGENT_MAX_RETRIES', 3, 0),
+      baseMs: intEnv('AGENT_RETRY_BASE_MS', 1000, 0),
     },
-    maxContextTokens: intEnv('AGENT_MAX_CONTEXT_TOKENS', 128000),
-    maxToolResultChars: intEnv('AGENT_MAX_TOOL_RESULT_CHARS', 8000),
+    maxContextTokens: intEnv('AGENT_MAX_CONTEXT_TOKENS', 128000, 1),
+    maxToolResultChars: intEnv('AGENT_MAX_TOOL_RESULT_CHARS', 8000, 1),
     openai,
     anthropic,
   };

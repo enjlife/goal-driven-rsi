@@ -4,6 +4,18 @@ export function truncate(s: string, max: number): string {
   return `${s.slice(0, max)}… (truncated)`;
 }
 
+/** Parse a strict integer, throwing on non-integers or values below `min`. */
+export function strictInt(value: string, name: string, min = 0): number {
+  const n = Number(value);
+  if (!Number.isInteger(n)) {
+    throw new Error(`invalid ${name}: "${value}" is not an integer`);
+  }
+  if (n < min) {
+    throw new Error(`invalid ${name}: ${n} is below the minimum ${min}`);
+  }
+  return n;
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

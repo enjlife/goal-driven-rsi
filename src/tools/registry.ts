@@ -74,14 +74,13 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<Too
         if (!command) throw new Error('missing "command"');
         const timeoutMs = typeof args.timeout_ms === 'number' ? args.timeout_ms : ctx.shellTimeoutMs;
         const r = await runShell(command, { cwd: ctx.cwd, timeoutMs });
-        const output = [
-          r.stdout ? `[stdout]\n${r.stdout}` : '',
-          r.stderr ? `[stderr]\n${r.stderr}` : '',
-          r.timed_out ? '[timed out]' : '',
-        ]
-          .filter(Boolean)
-          .join('\n');
-        return { ok: true, output: output || `[exit ${r.exit_code}]` };
+        const parts: string[] = [];
+        if (r.stdout) parts.push(`[stdout]\n${r.stdout.trimEnd()}`);
+        if (r.stderr) parts.push(`[stderr]\n${r.stderr.trimEnd()}`);
+        parts.push(r.timed_out ? '[timed out]' : `[exit ${r.exit_code}]`);
+        const output = parts.join('\n');
+        const failed = r.timed_out || r.exit_code !== 0;
+        return failed ? { ok: false, error: output } : { ok: true, output };
       }
       case 'read_file': {
         const path = typeof args.path === 'string' ? args.path : '';
