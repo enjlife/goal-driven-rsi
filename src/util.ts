@@ -1,7 +1,15 @@
+import { relative } from 'node:path';
+
 /** Truncate `s` to at most `max` characters, marking the cut. */
 export function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return `${s.slice(0, max)}… (truncated)`;
+}
+
+/** Path shown to the model, relative to cwd when possible. */
+export function displayPath(abs: string): string {
+  const rel = relative(process.cwd(), abs);
+  return rel.startsWith('..') ? abs : rel;
 }
 
 /** Parse a strict integer, throwing on non-integers or values below `min`. */

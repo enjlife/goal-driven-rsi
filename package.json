@@ -1,14 +1,44 @@
 {
   "name": "goal-driven-rsi",
   "version": "0.1.0",
-  "private": true,
+  "description": "Minimal goal-driven agent for the local terminal: self-built loop, OpenAI/Anthropic compatible, JSONL interface, long-term memory and reusable skills. Usable as a CLI or a library.",
+  "license": "MIT",
   "type": "module",
-  "description": "Minimal goal-driven single agent with local terminal support (OpenAI/Anthropic compatible, JSONL interface)",
+  "bin": {
+    "goal-driven-rsi": "dist/index.js"
+  },
+  "main": "dist/agent.js",
+  "types": "dist/agent.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/agent.d.ts",
+      "import": "./dist/agent.js",
+      "default": "./dist/agent.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "agent",
+    "cli",
+    "openai",
+    "anthropic",
+    "llm",
+    "tools",
+    "memory",
+    "skills"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepare": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

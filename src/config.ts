@@ -8,6 +8,7 @@ export interface Config {
   provider: ProviderKind;
   workdir: string;
   memoryDir: string;
+  skillsDir: string;
   agentId: string;
   maxTurns: number;
   shellTimeoutMs: number;
@@ -21,7 +22,8 @@ export interface Config {
 
 const DEFAULT_SYSTEM_PROMPT =
   'You are a helpful terminal agent. You have tools available to run shell commands and read/write files. ' +
-  'Use a tool when it helps complete the user goal; otherwise answer directly. Be concise.';
+  'Use a tool when it helps complete the user goal; otherwise answer directly. Be concise. ' +
+  'You also have long-term memory (remember/recall) and reusable skills (list_skills/read_skill/create_skill); use them when they help.';
 
 /** Minimal .env loader (zero dependencies). Does not override already-set vars. */
 export function loadDotEnv(path = '.env'): void {
@@ -58,6 +60,12 @@ export interface ConfigOverrides {
   maxTurns?: number;
   agentId?: string;
   noTools?: boolean;
+  apiKey?: string;
+  baseUrl?: string;
+  workdir?: string;
+  memoryDir?: string;
+  skillsDir?: string;
+  systemPrompt?: string;
 }
 
 /** Resolve provider: explicit flag > AGENT_PROVIDER > whichever key is set > error. */
@@ -88,6 +96,17 @@ export function loadConfig(overrides: ConfigOverrides = {}): Config {
     maxTokens: intEnv('ANTHROPIC_MAX_TOKENS', 16000, 1),
   };
 
+  // Programmatic overrides take precedence over env (applied before validation).
+  if (overrides.apiKey) {
+    if (provider === 'openai') openai.apiKey = overrides.apiKey;
+    else if (provider === 'anthropic') anthropic.apiKey = overrides.apiKey;
+  }
+  if (overrides.baseUrl) {
+    const url = overrides.baseUrl.replace(/\/$/, '');
+    if (provider === 'openai') openai.baseUrl = url;
+    else if (provider === 'anthropic') anthropic.baseUrl = url;
+  }
+
   if (provider === 'openai' && !openai.apiKey) {
     throw new Error('provider "openai" selected but OPENAI_API_KEY is not set.');
   }
@@ -97,12 +116,13 @@ export function loadConfig(overrides: ConfigOverrides = {}): Config {
 
   return {
     provider,
-    workdir: workdirRaw ? resolve(workdirRaw) : process.cwd(),
-    memoryDir: resolve(process.env.AGENT_MEMORY_DIR || 'memory'),
+    workdir: overrides.workdir ? resolve(overrides.workdir) : workdirRaw ? resolve(workdirRaw) : process.cwd(),
+    memoryDir: resolve(overrides.memoryDir || process.env.AGENT_MEMORY_DIR || 'memory'),
+    skillsDir: resolve(overrides.skillsDir || process.env.AGENT_SKILLS_DIR || 'skills'),
     agentId: overrides.agentId || process.env.AGENT_ID || 'main',
     maxTurns: overrides.maxTurns ?? intEnv('AGENT_MAX_TURNS', 8, 1),
     shellTimeoutMs: intEnv('AGENT_SHELL_TIMEOUT_MS', 30000, 1),
-    systemPrompt: process.env.AGENT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT,
+    systemPrompt: overrides.systemPrompt || process.env.AGENT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT,
     retry: {
       maxRetries: intEnv('AGENT_MAX_RETRIES', 3, 0),
       baseMs: intEnv('AGENT_RETRY_BASE_MS', 1000, 0),

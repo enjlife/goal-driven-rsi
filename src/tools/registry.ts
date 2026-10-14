@@ -1,13 +1,16 @@
 import type { ToolCall, ToolDef, ToolResult } from '../types.js';
 import type { MemoryStore } from '../memory/store.js';
+import type { SkillStore } from '../skills/store.js';
 import { runShell } from './shell.js';
 import { readFile, writeFile } from './files.js';
 import { remember, recall } from './memory.js';
+import { listSkills, readSkill, createSkill } from './skill.js';
 
 export interface ToolContext {
   cwd: string;
   shellTimeoutMs: number;
   memory: MemoryStore;
+  skills: SkillStore;
 }
 
 export function toolDefs(): ToolDef[] {
@@ -84,6 +87,43 @@ export function toolDefs(): ToolDef[] {
         additionalProperties: false,
       },
     },
+    {
+      name: 'list_skills',
+      description:
+        'List available reusable skills (name + one-line description). Use to discover skills before calling read_skill.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'read_skill',
+      description: 'Read the full instructions of a skill by name so you can follow its procedure.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Name of the skill to read.' },
+        },
+        required: ['name'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'create_skill',
+      description:
+        'Create (or overwrite) a reusable skill: a named procedure with a one-line description of when to use it, plus step-by-step instructions.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Skill name (e.g. "report-issue").' },
+          description: { type: 'string', description: 'One line: when to use this skill.' },
+          content: { type: 'string', description: 'Step-by-step instructions / procedure.' },
+        },
+        required: ['name', 'description', 'content'],
+        additionalProperties: false,
+      },
+    },
   ];
 }
 
@@ -133,6 +173,12 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<Too
         return remember(ctx.memory, args);
       case 'recall':
         return recall(ctx.memory, args);
+      case 'list_skills':
+        return listSkills(ctx.skills);
+      case 'read_skill':
+        return readSkill(ctx.skills, args);
+      case 'create_skill':
+        return createSkill(ctx.skills, args);
       default:
         return { ok: false, error: `unknown tool: ${call.name}` };
     }

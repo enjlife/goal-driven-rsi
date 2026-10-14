@@ -103,6 +103,36 @@ Two flavours, sharing one event schema:
 printf '%s\n' '{"content":"run echo hello"}' | node dist/index.js --jsonl --provider mock
 ```
 
+## Use as a library (npm)
+
+Publish and install as a dependency, then import the `Agent` class:
+
+```ts
+import { Agent } from 'goal-driven-rsi';
+
+const agent = new Agent({ provider: 'anthropic' }); // or pass apiKey/baseUrl/model/agentId/...
+const { content, turns } = await agent.run('列出当前目录');
+
+// stateful multi-turn
+const session = agent.session();
+await session.ask('先看看有哪些文件');
+await session.ask('读第一个文件');
+```
+
+Options (all optional; unset fields fall back to env vars / defaults):
+`provider`, `model`, `apiKey`, `baseUrl`, `agentId`, `workdir`, `memoryDir`, `skillsDir`, `systemPrompt`, `maxTurns`, `noTools`.
+
+Pass `onEvent` to `run()` / `ask()` to observe `request / assistant / tool_call / tool_result / done / error` events.
+
+Publish:
+
+```bash
+npm login       # once
+npm publish     # runs prepublishOnly -> build, then publishes dist/
+```
+
+The package is ESM-only (`"type": "module"`), requires Node >= 18, and the unscoped name must be free on npm — scope it (`@yourname/goal-driven-rsi`) if `goal-driven-rsi` is taken.
+
 ## Configuration (env vars)
 
 See `.env.example` for the full annotated list:

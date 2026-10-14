@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import type { AgentEvent } from '../types.js';
+import { displayPath } from '../util.js';
 import { rank, type Doc } from './search.js';
 
 export interface JournalEntry {
@@ -43,12 +44,6 @@ export class MemoryStore {
   }
   sharedPath(): string {
     return join(this.sharedDir(), 'notes.md');
-  }
-
-  /** Path shown to the model, relative to cwd when possible. */
-  private displayPath(abs: string): string {
-    const rel = relative(process.cwd(), abs);
-    return rel.startsWith('..') ? abs : rel;
   }
 
   appendJournal(entry: { kind: JournalEntry['kind']; summary: string }): void {
@@ -131,13 +126,13 @@ export class MemoryStore {
         const insights = join(dir, 'insights.md');
         if (existsSync(insights)) {
           for (const s of splitSections(readFileSync(insights, 'utf8'))) {
-            docs.push({ path: this.displayPath(insights), text: s.text, ts: s.ts });
+            docs.push({ path: displayPath(insights), text: s.text, ts: s.ts });
           }
         }
         const journal = join(dir, 'journal.jsonl');
         if (existsSync(journal)) {
           for (const e of this.parseJournalFile(journal)) {
-            docs.push({ path: this.displayPath(journal), text: e.summary, ts: e.ts });
+            docs.push({ path: displayPath(journal), text: e.summary, ts: e.ts });
           }
         }
       }
@@ -146,7 +141,7 @@ export class MemoryStore {
       if (!f.endsWith('.md')) continue;
       const p = join(this.sharedDir(), f);
       for (const s of splitSections(readFileSync(p, 'utf8'))) {
-        docs.push({ path: this.displayPath(p), text: s.text, ts: s.ts });
+        docs.push({ path: displayPath(p), text: s.text, ts: s.ts });
       }
     }
     return docs;

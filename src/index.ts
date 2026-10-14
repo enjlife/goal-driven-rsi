@@ -1,15 +1,14 @@
+#!/usr/bin/env node
 import { parseArgs } from 'node:util';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import readline from 'node:readline';
 
 import { loadDotEnv, loadConfig, type ProviderKind } from './config.js';
-import { createProvider } from './providers/provider.js';
-import { toolDefs } from './tools/registry.js';
+import { buildEnv } from './env.js';
 import { newMessages, runTurn, printHuman, type RunEnv } from './run.js';
 import { runRepl } from './repl.js';
 import { Transcript, writeEventTo, parseIncomingLine } from './jsonl.js';
-import { MemoryStore } from './memory/store.js';
 import { strictInt } from './util.js';
 import type { AgentEvent } from './types.js';
 
@@ -139,19 +138,7 @@ async function main(): Promise<void> {
   }
 
   const config = loadConfig({ provider: args.provider, model: args.model, maxTurns: args.maxTurns, agentId: args.agent });
-  const provider = createProvider(config.provider, config);
-  const tools = args.noTools ? [] : toolDefs();
-  const memory = new MemoryStore(config.memoryDir, config.agentId);
-  const env: RunEnv = {
-    provider,
-    tools,
-    toolContext: { cwd: config.workdir, shellTimeoutMs: config.shellTimeoutMs, memory },
-    memory,
-    maxTurns: config.maxTurns,
-    maxContextTokens: config.maxContextTokens,
-    maxToolResultChars: config.maxToolResultChars,
-    systemPrompt: config.systemPrompt,
-  };
+  const env: RunEnv = buildEnv(config, { noTools: args.noTools });
 
   if (args.jsonl) {
     const transcript = openTranscript(args, false);

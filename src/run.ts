@@ -1,8 +1,8 @@
-import type { AgentEvent, AssistantMessage, Message, ToolDef } from './types.js';
+import type { AgentEvent, Message, ToolDef } from './types.js';
 import type { ChatProvider } from './providers/provider.js';
 import type { ToolContext } from './tools/registry.js';
 import type { MemoryStore } from './memory/store.js';
-import { runAgent } from './loop.js';
+import { runAgent, type LoopOutcome } from './loop.js';
 import { truncate } from './util.js';
 
 export interface RunEnv {
@@ -27,21 +27,20 @@ export async function runTurn(
   messages: Message[],
   content: string,
   onEvent?: (e: AgentEvent) => void,
-): Promise<AssistantMessage> {
+): Promise<LoopOutcome> {
   const emit = (e: AgentEvent): void => {
     onEvent?.(e);
     env.memory.record(e);
   };
   emit({ type: 'request', role: 'user', content });
   messages.push({ role: 'user', content });
-  const { message } = await runAgent(env.provider, env.tools, messages, {
+  return runAgent(env.provider, env.tools, messages, {
     maxTurns: env.maxTurns,
     toolContext: env.toolContext,
     maxContextTokens: env.maxContextTokens,
     maxToolResultChars: env.maxToolResultChars,
     onEvent: emit,
   });
-  return message;
 }
 
 /**
