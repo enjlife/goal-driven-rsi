@@ -31,8 +31,27 @@ Three minimal tools, defined with JSON Schema and dispatched by the loop:
 | `run_shell` | Run a single shell command in `AGENT_WORKDIR`; returns stdout/stderr/exit code. A non-zero exit code or timeout is reported as a tool failure. No PTY, no state between calls, `AGENT_SHELL_TIMEOUT_MS` default 30s. |
 | `read_file` | Read a UTF-8 text file (relative to workdir, `..` escapes rejected, 1 MiB cap). |
 | `write_file` | Create/overwrite a UTF-8 text file (relative to workdir, `..` escapes rejected). |
+| `remember` | Write a long-term memory: a curated insight (`scope: "self"`) or cross-agent shared knowledge (`scope: "shared"`). |
+| `recall` | Search long-term memory across all agents' insights, shared knowledge and journals; omit the query to list your recent journal entries. |
 
 Disable tools entirely with `--no-tools`.
+
+## Long-term memory
+
+Every agent keeps a persistent, file-based memory under `AGENT_MEMORY_DIR` (default `./memory`, gitignored), namespaced by `AGENT_ID` (or `--agent <id>`):
+
+```
+memory/
+  agents/<id>/journal.jsonl   # auto-appended task log (task / outcome / error)
+  agents/<id>/insights.md     # curated learnings (written via `remember`, scope "self")
+  shared/notes.md             # cross-agent shared knowledge (via `remember`, scope "shared")
+```
+
+- The **journal** is written automatically by the harness each turn, so records survive even if the agent never calls `remember`.
+- **insights** and **shared** are written by the agent and are what other agents "借鉴" via `recall`.
+- `recall` searches everything (all agents' insights + journals + shared notes) and returns ranked snippets; an empty query returns the current agent's recent journal entries for resuming work.
+
+Give each sub-agent its own id in a multi-agent setup: `node dist/index.js --agent researcher …`
 
 ## CLI
 
@@ -46,6 +65,7 @@ agent --jsonl                    JSONL protocol on stdin/stdout
 --provider <name>      openai | anthropic | mock  (default: auto-detect)
 -m, --model <id>       model id override
 --max-turns <n>        max model<->tool round-trips per turn (default 8)
+--agent <id>           agent identity for long-term memory (default: main)
 --no-tools             pure chat, no tools
 --session <path>       transcript JSONL path (default sessions/<ts>.jsonl in human modes)
 --no-session           disable transcript
@@ -89,6 +109,7 @@ See `.env.example` for the full annotated list:
 
 - Provider: `AGENT_PROVIDER`, `OPENAI_API_KEY`/`OPENAI_BASE_URL`/`OPENAI_MODEL`, `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL`/`ANTHROPIC_MODEL`/`ANTHROPIC_MAX_TOKENS`
 - Behaviour: `AGENT_WORKDIR`, `AGENT_MAX_TURNS`, `AGENT_SHELL_TIMEOUT_MS`, `AGENT_SYSTEM_PROMPT`
+- Memory: `AGENT_MEMORY_DIR`, `AGENT_ID`
 - Retry & context: `AGENT_MAX_RETRIES`, `AGENT_RETRY_BASE_MS`, `AGENT_MAX_CONTEXT_TOKENS`, `AGENT_MAX_TOOL_RESULT_CHARS`
 
 `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL` let you point at compatible endpoints (e.g. a local or proxied gateway).
@@ -107,9 +128,10 @@ src/
   context.ts        token estimation + sliding-window history trimming
   retry.ts          exponential-backoff retry for retryable provider errors
   errors.ts         ProviderError (status + retryable classification)
-  util.ts           truncate / sleep helpers
+  util.ts           truncate / sleep / strictInt helpers
+  memory/           store.ts (MemoryStore) + search.ts (zero-dep keyword ranking)
   providers/        provider.ts (interface+factory), openai.ts, anthropic.ts, mock.ts
-  tools/            registry.ts, shell.ts, files.ts
+  tools/            registry.ts, shell.ts, files.ts, memory.ts
 ```
 
 ## Notes

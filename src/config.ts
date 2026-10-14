@@ -7,6 +7,8 @@ export type ProviderKind = 'openai' | 'anthropic' | 'mock';
 export interface Config {
   provider: ProviderKind;
   workdir: string;
+  memoryDir: string;
+  agentId: string;
   maxTurns: number;
   shellTimeoutMs: number;
   systemPrompt: string;
@@ -54,6 +56,7 @@ export interface ConfigOverrides {
   provider?: ProviderKind;
   model?: string;
   maxTurns?: number;
+  agentId?: string;
   noTools?: boolean;
 }
 
@@ -95,6 +98,8 @@ export function loadConfig(overrides: ConfigOverrides = {}): Config {
   return {
     provider,
     workdir: workdirRaw ? resolve(workdirRaw) : process.cwd(),
+    memoryDir: resolve(process.env.AGENT_MEMORY_DIR || 'memory'),
+    agentId: overrides.agentId || process.env.AGENT_ID || 'main',
     maxTurns: overrides.maxTurns ?? intEnv('AGENT_MAX_TURNS', 8, 1),
     shellTimeoutMs: intEnv('AGENT_SHELL_TIMEOUT_MS', 30000, 1),
     systemPrompt: process.env.AGENT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT,

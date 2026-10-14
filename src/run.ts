@@ -1,6 +1,7 @@
 import type { AgentEvent, AssistantMessage, Message, ToolDef } from './types.js';
 import type { ChatProvider } from './providers/provider.js';
 import type { ToolContext } from './tools/registry.js';
+import type { MemoryStore } from './memory/store.js';
 import { runAgent } from './loop.js';
 import { truncate } from './util.js';
 
@@ -8,6 +9,7 @@ export interface RunEnv {
   provider: ChatProvider;
   tools: ToolDef[];
   toolContext: ToolContext;
+  memory: MemoryStore;
   maxTurns: number;
   maxContextTokens: number;
   maxToolResultChars: number;
@@ -26,14 +28,18 @@ export async function runTurn(
   content: string,
   onEvent?: (e: AgentEvent) => void,
 ): Promise<AssistantMessage> {
-  onEvent?.({ type: 'request', role: 'user', content });
+  const emit = (e: AgentEvent): void => {
+    onEvent?.(e);
+    env.memory.record(e);
+  };
+  emit({ type: 'request', role: 'user', content });
   messages.push({ role: 'user', content });
   const { message } = await runAgent(env.provider, env.tools, messages, {
     maxTurns: env.maxTurns,
     toolContext: env.toolContext,
     maxContextTokens: env.maxContextTokens,
     maxToolResultChars: env.maxToolResultChars,
-    onEvent,
+    onEvent: emit,
   });
   return message;
 }

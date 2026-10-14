@@ -9,6 +9,7 @@ import { toolDefs } from './tools/registry.js';
 import { newMessages, runTurn, printHuman, type RunEnv } from './run.js';
 import { runRepl } from './repl.js';
 import { Transcript, writeEventTo, parseIncomingLine } from './jsonl.js';
+import { MemoryStore } from './memory/store.js';
 import { strictInt } from './util.js';
 import type { AgentEvent } from './types.js';
 
@@ -25,6 +26,7 @@ Options:
   --provider <name>      openai | anthropic | mock (default: auto-detect from keys)
   -m, --model <id>       model id override
   --max-turns <n>        max model<->tool round-trips per turn (default 8)
+  --agent <id>           agent identity for long-term memory (default: main)
   --no-tools             disable tool calling (pure chat)
   --session <path>       transcript JSONL path (default: sessions/<timestamp>.jsonl in human modes)
   --no-session           disable transcript
@@ -41,6 +43,7 @@ interface CliArgs {
   provider?: ProviderKind;
   model?: string;
   maxTurns?: number;
+  agent?: string;
   noTools: boolean;
   session?: string;
   noSession: boolean;
@@ -55,6 +58,7 @@ function parseCli(): CliArgs {
       provider: { type: 'string' },
       model: { type: 'string', short: 'm' },
       'max-turns': { type: 'string' },
+      agent: { type: 'string' },
       'no-tools': { type: 'boolean' },
       session: { type: 'string' },
       'no-session': { type: 'boolean' },
@@ -76,6 +80,7 @@ function parseCli(): CliArgs {
     provider,
     model: values.model as string | undefined,
     maxTurns,
+    agent: values.agent as string | undefined,
     noTools: values['no-tools'] === true,
     session: values.session as string | undefined,
     noSession: values['no-session'] === true,
@@ -133,13 +138,15 @@ async function main(): Promise<void> {
     return;
   }
 
-  const config = loadConfig({ provider: args.provider, model: args.model, maxTurns: args.maxTurns });
+  const config = loadConfig({ provider: args.provider, model: args.model, maxTurns: args.maxTurns, agentId: args.agent });
   const provider = createProvider(config.provider, config);
   const tools = args.noTools ? [] : toolDefs();
+  const memory = new MemoryStore(config.memoryDir, config.agentId);
   const env: RunEnv = {
     provider,
     tools,
-    toolContext: { cwd: config.workdir, shellTimeoutMs: config.shellTimeoutMs },
+    toolContext: { cwd: config.workdir, shellTimeoutMs: config.shellTimeoutMs, memory },
+    memory,
     maxTurns: config.maxTurns,
     maxContextTokens: config.maxContextTokens,
     maxToolResultChars: config.maxToolResultChars,

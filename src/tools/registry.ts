@@ -1,10 +1,13 @@
 import type { ToolCall, ToolDef, ToolResult } from '../types.js';
+import type { MemoryStore } from '../memory/store.js';
 import { runShell } from './shell.js';
 import { readFile, writeFile } from './files.js';
+import { remember, recall } from './memory.js';
 
 export interface ToolContext {
   cwd: string;
   shellTimeoutMs: number;
+  memory: MemoryStore;
 }
 
 export function toolDefs(): ToolDef[] {
@@ -47,6 +50,37 @@ export function toolDefs(): ToolDef[] {
           content: { type: 'string', description: 'File contents to write.' },
         },
         required: ['path', 'content'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'remember',
+      description:
+        'Record a long-term memory. scope "self" appends a curated insight to your own notes; ' +
+        'scope "shared" appends cross-agent shared knowledge. Use for lessons learned, decisions, and reusable findings.',
+      parameters: {
+        type: 'object',
+        properties: {
+          scope: { type: 'string', enum: ['self', 'shared'], description: 'self = your own insights; shared = shared knowledge.' },
+          title: { type: 'string', description: 'Short title for the memory.' },
+          content: { type: 'string', description: 'The memory content.' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags for search.' },
+        },
+        required: ['scope', 'title', 'content'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'recall',
+      description:
+        'Search long-term memory across all agents\' insights, shared knowledge, and journals. ' +
+        'Omit query to list your most recent journal entries (what you did recently).',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search terms; omit to list recent entries.' },
+          max_results: { type: 'number', description: 'Max results to return (default 5).' },
+        },
         additionalProperties: false,
       },
     },
@@ -95,6 +129,10 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<Too
         const target = writeFile(path, content, ctx.cwd);
         return { ok: true, output: `wrote ${target}` };
       }
+      case 'remember':
+        return remember(ctx.memory, args);
+      case 'recall':
+        return recall(ctx.memory, args);
       default:
         return { ok: false, error: `unknown tool: ${call.name}` };
     }
