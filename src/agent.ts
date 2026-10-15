@@ -12,6 +12,8 @@ export interface AgentOptions extends ConfigOverrides {}
 export interface RunResult {
   content: string | null;
   turns: number;
+  /** Set when the agent stopped early (soft step budget or a tool-call loop). */
+  stopped?: 'max_turns' | 'loop';
 }
 
 /** A library entry point: construct once, then `run()` one-shot prompts. */
@@ -25,8 +27,8 @@ export class Agent {
 
   /** Run a single prompt to completion in a fresh conversation. */
   async run(prompt: string, onEvent?: (e: AgentEvent) => void): Promise<RunResult> {
-    const { message, turns } = await runTurn(this.env, newMessages(this.env), prompt, onEvent);
-    return { content: message.content, turns };
+    const { message, turns, stopped } = await runTurn(this.env, newMessages(this.env), prompt, onEvent);
+    return { content: message.content, turns, stopped };
   }
 
   /** Start a stateful multi-turn conversation. */
@@ -43,7 +45,7 @@ export class Session {
   ) {}
 
   async ask(content: string, onEvent?: (e: AgentEvent) => void): Promise<RunResult> {
-    const { message, turns } = await runTurn(this.env, this.messages, content, onEvent);
-    return { content: message.content, turns };
+    const { message, turns, stopped } = await runTurn(this.env, this.messages, content, onEvent);
+    return { content: message.content, turns, stopped };
   }
 }

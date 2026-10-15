@@ -142,7 +142,7 @@ export function loadConfig(overrides: ConfigOverrides = {}): Config {
     memoryDir: resolve(overrides.memoryDir || process.env.AGENT_MEMORY_DIR || 'memory'),
     skillsDir: resolve(overrides.skillsDir || process.env.AGENT_SKILLS_DIR || 'skills'),
     agentId: overrides.agentId || process.env.AGENT_ID || 'main',
-    maxTurns: overrides.maxTurns ?? intEnv('AGENT_MAX_TURNS', 8, 1),
+    maxTurns: overrides.maxTurns ?? intEnv('AGENT_MAX_TURNS', 50, 1),
     shellTimeoutMs: intEnv('AGENT_SHELL_TIMEOUT_MS', 30000, 1),
     systemPrompt: overrides.systemPrompt || process.env.AGENT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT,
     retry: {

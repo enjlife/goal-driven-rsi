@@ -24,7 +24,7 @@ Options:
   --jsonl                stdin/stdout JSONL line protocol
   --provider <name>      openai | anthropic | mock (default: auto-detect from keys)
   -m, --model <id>       model id override
-  --max-turns <n>        max model<->tool round-trips per turn (default 8)
+  --max-turns <n>        max model<->tool round-trips per turn (default 50; soft limit)
   --agent <id>           agent identity for long-term memory (default: main)
   --no-tools             disable tool calling (pure chat)
   --session <path>       transcript JSONL path (default: sessions/<timestamp>.jsonl in human modes)

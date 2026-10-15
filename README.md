@@ -64,7 +64,7 @@ agent --jsonl                    JSONL protocol on stdin/stdout
 --jsonl                stdin/stdout JSONL line protocol
 --provider <name>      openai | anthropic | mock  (default: auto-detect)
 -m, --model <id>       model id override
---max-turns <n>        max model<->tool round-trips per turn (default 8)
+--max-turns <n>        max model<->tool round-trips per turn (default 50; soft limit)
 --agent <id>           agent identity for long-term memory (default: main)
 --no-tools             pure chat, no tools
 --session <path>       transcript JSONL path (default sessions/<ts>.jsonl in human modes)
@@ -184,6 +184,7 @@ src/
 - Zero runtime dependencies: native `fetch`, `node:child_process`, `node:readline`, `node:util.parseArgs`.
 - Non-streaming requests (one HTTP call per turn) for minimalism; streaming is a later enhancement.
 - Multiple tool calls in one turn run **in parallel** (`Promise.all`); results are fed back in order.
+- The turn budget is a **soft limit**: the model is nudged to wrap up on the final turn, repeated identical tool calls stop the loop early, and hitting the limit returns a graceful note instead of throwing.
 - Retryable API errors (429/5xx/network) retry with exponential backoff + jitter; non-retryable errors (400/401/403) fail fast.
 - History is trimmed with a sliding window (drop oldest user-turns) once the approximate token count nears the context budget; oversized `tool_result` output is truncated before reaching the model.
 - The Anthropic provider preserves and echoes back thinking blocks so multi-turn history stays append-only.
