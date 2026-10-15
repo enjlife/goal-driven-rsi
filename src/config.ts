@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { strictInt } from './util.js';
 
 export type ProviderKind = 'openai' | 'anthropic' | 'mock';
@@ -25,14 +26,15 @@ const DEFAULT_SYSTEM_PROMPT =
   'Use a tool when it helps complete the user goal; otherwise answer directly. Be concise. ' +
   'You also have long-term memory (remember/recall) and reusable skills (list_skills/read_skill/create_skill); use them when they help.';
 
-/** Minimal .env loader (zero dependencies). Does not override already-set vars. */
-export function loadDotEnv(path = '.env'): void {
+/** Parse a `.env`-style file into a map (missing file -> empty map). */
+function parseEnvFile(path: string): Record<string, string> {
   let text: string;
   try {
     text = readFileSync(path, 'utf8');
   } catch {
-    return; // no .env file
+    return {};
   }
+  const out: Record<string, string> = {};
   for (const line of text.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
@@ -43,6 +45,26 @@ export function loadDotEnv(path = '.env'): void {
     if (val.length >= 2 && ((val[0] === '"' && val[val.length - 1] === '"') || (val[0] === "'" && val[val.length - 1] === "'"))) {
       val = val.slice(1, -1);
     }
+    out[key] = val;
+  }
+  return out;
+}
+
+/** User-level config file (shared across all projects), or AGENT_CONFIG override. */
+function userConfigEnvPath(): string {
+  if (process.env.AGENT_CONFIG) return process.env.AGENT_CONFIG;
+  const base = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+  return join(base, 'goal-driven-rsi', '.env');
+}
+
+/**
+ * Minimal `.env` loader (zero dependencies). Precedence (highest first):
+ * already-exported env vars > project `./.env` > user config `~/.config/goal-driven-rsi/.env`.
+ */
+export function loadDotEnv(path = '.env'): void {
+  const user = parseEnvFile(userConfigEnvPath());
+  const project = parseEnvFile(path);
+  for (const [key, val] of Object.entries({ ...user, ...project })) {
     if (process.env[key] === undefined) process.env[key] = val;
   }
 }

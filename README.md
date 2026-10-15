@@ -140,9 +140,24 @@ See `.env.example` for the full annotated list:
 - Provider: `AGENT_PROVIDER`, `OPENAI_API_KEY`/`OPENAI_BASE_URL`/`OPENAI_MODEL`, `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL`/`ANTHROPIC_MODEL`/`ANTHROPIC_MAX_TOKENS`
 - Behaviour: `AGENT_WORKDIR`, `AGENT_MAX_TURNS`, `AGENT_SHELL_TIMEOUT_MS`, `AGENT_SYSTEM_PROMPT`
 - Memory: `AGENT_MEMORY_DIR`, `AGENT_ID`
+- Skills: `AGENT_SKILLS_DIR`
 - Retry & context: `AGENT_MAX_RETRIES`, `AGENT_RETRY_BASE_MS`, `AGENT_MAX_CONTEXT_TOKENS`, `AGENT_MAX_TOOL_RESULT_CHARS`
 
 `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL` let you point at compatible endpoints (e.g. a local or proxied gateway).
+
+### Config precedence (highest first)
+
+1. Exported environment variables (e.g. in your shell profile)
+2. Project `./.env` (the current directory)
+3. User-level config `~/.config/goal-driven-rsi/.env` (or `$XDG_CONFIG_HOME/goal-driven-rsi/.env`, or override its path with `AGENT_CONFIG`)
+4. Built-in defaults
+
+Put your API key once in the user-level config and every project (and the global `goal-driven-rsi` command) shares it, unless a project exports its own key or `.env`:
+
+```bash
+mkdir -p ~/.config/goal-driven-rsi
+cp .env.example ~/.config/goal-driven-rsi/.env   # then edit it
+```
 
 ## Project layout
 
