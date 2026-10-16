@@ -44,12 +44,14 @@ Every agent keeps a persistent, file-based memory under `AGENT_MEMORY_DIR` (defa
 memory/
   agents/<id>/journal.jsonl   # auto-appended task log (task / outcome / error)
   agents/<id>/insights.md     # curated learnings (written via `remember`, scope "self")
+  agents/<id>/session.json    # full conversation history (for --resume)
   shared/notes.md             # cross-agent shared knowledge (via `remember`, scope "shared")
 ```
 
 - The **journal** is written automatically by the harness each turn, so records survive even if the agent never calls `remember`.
 - **insights** and **shared** are written by the agent and are what other agents "借鉴" via `recall`.
 - `recall` searches everything (all agents' insights + journals + shared notes) and returns ranked snippets; an empty query returns the current agent's recent journal entries for resuming work.
+- The full conversation is saved to `session.json` after every turn; `--resume` restores it so you can continue where you left off.
 
 Give each sub-agent its own id in a multi-agent setup: `node dist/index.js --agent researcher …`
 
@@ -69,6 +71,7 @@ agent --jsonl                    JSONL protocol on stdin/stdout
 --no-tools             pure chat, no tools
 --session <path>       transcript JSONL path (default sessions/<ts>.jsonl in human modes)
 --no-session           disable transcript
+--resume               continue the last saved conversation (per --agent)
 -h, --help
 ```
 

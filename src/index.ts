@@ -10,7 +10,7 @@ import { newMessages, runTurn, printHuman, type RunEnv } from './run.js';
 import { runRepl } from './repl.js';
 import { Transcript, writeEventTo, parseIncomingLine } from './jsonl.js';
 import { strictInt } from './util.js';
-import type { AgentEvent } from './types.js';
+import type { AgentEvent, Message } from './types.js';
 
 const HELP = `goal-driven-rsi — minimal local terminal agent
 
@@ -29,6 +29,7 @@ Options:
   --no-tools             disable tool calling (pure chat)
   --session <path>       transcript JSONL path (default: sessions/<timestamp>.jsonl in human modes)
   --no-session           disable transcript
+  --resume               continue the last saved conversation (per --agent)
   -h, --help             show this help
 
 JSONL protocol (stdin, one JSON object per line):
@@ -46,6 +47,7 @@ interface CliArgs {
   noTools: boolean;
   session?: string;
   noSession: boolean;
+  resume: boolean;
   help: boolean;
 }
 
@@ -61,6 +63,7 @@ function parseCli(): CliArgs {
       'no-tools': { type: 'boolean' },
       session: { type: 'string' },
       'no-session': { type: 'boolean' },
+      resume: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -83,6 +86,7 @@ function parseCli(): CliArgs {
     noTools: values['no-tools'] === true,
     session: values.session as string | undefined,
     noSession: values['no-session'] === true,
+    resume: values.resume === true,
     help: values.help === true,
   };
 }
@@ -100,9 +104,8 @@ function openTranscript(args: CliArgs, humanMode: boolean): Transcript | null {
   return new Transcript(path);
 }
 
-async function runJsonl(env: RunEnv, transcript: Transcript | null): Promise<void> {
+async function runJsonl(env: RunEnv, transcript: Transcript | null, messages: Message[]): Promise<void> {
   const rl = readline.createInterface({ input: process.stdin });
-  let messages = newMessages(env);
 
   const onEvent = (e: AgentEvent): void => {
     writeEventTo(process.stdout, e);
@@ -140,9 +143,24 @@ async function main(): Promise<void> {
   const config = loadConfig({ provider: args.provider, model: args.model, maxTurns: args.maxTurns, agentId: args.agent });
   const env: RunEnv = buildEnv(config, { noTools: args.noTools });
 
+  // Start from the previous conversation when --resume is given (per-agent namespace).
+  let messages: Message[];
+  if (args.resume) {
+    const loaded = env.memory.loadSession();
+    if (loaded && loaded.length > 0) {
+      messages = loaded;
+      process.stderr.write(`[resume] restored ${loaded.length} previous messages\n`);
+    } else {
+      messages = newMessages(env);
+      process.stderr.write('[resume] no previous session found; starting fresh\n');
+    }
+  } else {
+    messages = newMessages(env);
+  }
+
   if (args.jsonl) {
     const transcript = openTranscript(args, false);
-    await runJsonl(env, transcript);
+    await runJsonl(env, transcript, messages);
     return;
   }
 
@@ -154,7 +172,7 @@ async function main(): Promise<void> {
 
   if (args.prompt !== undefined) {
     try {
-      await runTurn(env, newMessages(env), args.prompt, onEvent);
+      await runTurn(env, messages, args.prompt, onEvent);
     } catch (e) {
       printHuman({ type: 'error', message: (e as Error).message });
       process.exitCode = 1;
@@ -163,7 +181,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  await runRepl(env, transcript);
+  await runRepl(env, transcript, messages);
 }
 
 main().catch((e) => {

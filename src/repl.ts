@@ -1,16 +1,15 @@
 import readline from 'node:readline';
-import type { AgentEvent } from './types.js';
+import type { AgentEvent, Message } from './types.js';
 import { newMessages, runTurn, printHuman, type RunEnv } from './run.js';
 import type { Transcript } from './jsonl.js';
 
-export async function runRepl(env: RunEnv, transcript: Transcript | null): Promise<void> {
+export async function runRepl(env: RunEnv, transcript: Transcript | null, messages: Message[]): Promise<void> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'agent> ' });
   rl.on('SIGINT', () => {
     // Ctrl+C on an empty line exits; otherwise it just cancels the current line.
     if ((rl.line ?? '').trim() === '') rl.close();
     else rl.write(null, { ctrl: true, name: 'u' });
   });
-  let messages = newMessages(env);
 
   const onEvent = (e: AgentEvent): void => {
     printHuman(e);

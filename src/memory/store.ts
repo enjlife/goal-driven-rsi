@@ -1,6 +1,6 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AgentEvent } from '../types.js';
+import type { AgentEvent, Message } from '../types.js';
 import { displayPath } from '../util.js';
 import { rank, type Doc } from './search.js';
 
@@ -44,6 +44,26 @@ export class MemoryStore {
   }
   sharedPath(): string {
     return join(this.sharedDir(), 'notes.md');
+  }
+  sessionPath(): string {
+    return join(this.selfDir(), 'session.json');
+  }
+
+  /** Persist the full conversation history so `--resume` can restore it. */
+  saveSession(messages: Message[]): void {
+    writeFileSync(this.sessionPath(), JSON.stringify(messages), 'utf8');
+  }
+
+  /** Load the last saved conversation history (undefined if none / corrupt). */
+  loadSession(): Message[] | undefined {
+    const path = this.sessionPath();
+    if (!existsSync(path)) return undefined;
+    try {
+      const parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
+      return Array.isArray(parsed) ? (parsed as Message[]) : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   appendJournal(entry: { kind: JournalEntry['kind']; summary: string }): void {

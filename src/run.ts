@@ -34,13 +34,15 @@ export async function runTurn(
   };
   emit({ type: 'request', role: 'user', content });
   messages.push({ role: 'user', content });
-  return runAgent(env.provider, env.tools, messages, {
+  const outcome = await runAgent(env.provider, env.tools, messages, {
     maxTurns: env.maxTurns,
     toolContext: env.toolContext,
     maxContextTokens: env.maxContextTokens,
     maxToolResultChars: env.maxToolResultChars,
     onEvent: emit,
   });
+  env.memory.saveSession(messages);
+  return outcome;
 }
 
 /**
