@@ -6,11 +6,11 @@ import readline from 'node:readline';
 
 import { loadDotEnv, loadConfig, type ProviderKind } from './config.js';
 import { buildEnv } from './env.js';
-import { newMessages, runTurn, printHuman, type RunEnv } from './run.js';
+import { newSession, runTurn, printHuman, type RunEnv, type Session } from './run.js';
 import { runRepl } from './repl.js';
 import { Transcript, writeEventTo, parseIncomingLine } from './jsonl.js';
 import { strictInt } from './util.js';
-import type { AgentEvent, Message } from './types.js';
+import type { AgentEvent } from './types.js';
 
 const HELP = `goal-driven-rsi — minimal local terminal agent
 
@@ -29,7 +29,8 @@ Options:
   --no-tools             disable tool calling (pure chat)
   --session <path>       transcript JSONL path (default: sessions/<timestamp>.jsonl in human modes)
   --no-session           disable transcript
-  --resume               continue the last saved conversation (per --agent)
+  --resume               list saved sessions and pick one to continue (per --agent)
+  --resume-id <id>       resume a specific saved session by id
   -h, --help             show this help
 
 JSONL protocol (stdin, one JSON object per line):
@@ -48,6 +49,7 @@ interface CliArgs {
   session?: string;
   noSession: boolean;
   resume: boolean;
+  resumeId?: string;
   help: boolean;
 }
 
@@ -64,6 +66,7 @@ function parseCli(): CliArgs {
       session: { type: 'string' },
       'no-session': { type: 'boolean' },
       resume: { type: 'boolean' },
+      'resume-id': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -87,6 +90,7 @@ function parseCli(): CliArgs {
     session: values.session as string | undefined,
     noSession: values['no-session'] === true,
     resume: values.resume === true,
+    resumeId: values['resume-id'] as string | undefined,
     help: values.help === true,
   };
 }
@@ -104,8 +108,9 @@ function openTranscript(args: CliArgs, humanMode: boolean): Transcript | null {
   return new Transcript(path);
 }
 
-async function runJsonl(env: RunEnv, transcript: Transcript | null, messages: Message[]): Promise<void> {
+async function runJsonl(env: RunEnv, transcript: Transcript | null, initial: Session): Promise<void> {
   const rl = readline.createInterface({ input: process.stdin });
+  let session = initial;
 
   const onEvent = (e: AgentEvent): void => {
     writeEventTo(process.stdout, e);
@@ -116,7 +121,7 @@ async function runJsonl(env: RunEnv, transcript: Transcript | null, messages: Me
     const parsed = parseIncomingLine(line);
     if (parsed.kind === 'skip') continue;
     if (parsed.kind === 'reset') {
-      messages = newMessages(env);
+      session = newSession(env);
       continue;
     }
     if (parsed.kind === 'invalid') {
@@ -124,12 +129,61 @@ async function runJsonl(env: RunEnv, transcript: Transcript | null, messages: Me
       continue;
     }
     try {
-      await runTurn(env, messages, parsed.content, onEvent);
+      await runTurn(env, session, parsed.content, onEvent);
     } catch (e) {
       onEvent({ type: 'error', message: (e as Error).message });
     }
   }
   transcript?.close();
+}
+
+/** Interactively pick a session index; non-TTY resumes the latest (0). */
+async function pickSession(count: number): Promise<number | null> {
+  if (!process.stdin.isTTY) return 0;
+  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    const answer = await new Promise<string>((resolve) => {
+      rl.question(`resume which? [1-${count}, Enter = latest, q = quit] `, resolve);
+    });
+    const t = answer.trim();
+    if (t === 'q' || t === 'Q') return null;
+    if (t === '') return 0;
+    const n = Number.parseInt(t, 10);
+    return Number.isFinite(n) && n >= 1 && n <= count ? n - 1 : 0;
+  } finally {
+    rl.close();
+  }
+}
+
+/** Resolve the starting session from --resume / --resume-id (or a fresh one). */
+async function resolveSession(env: RunEnv, args: CliArgs): Promise<Session | null> {
+  if (args.resumeId) {
+    const messages = env.memory.loadSession(args.resumeId);
+    if (messages) {
+      process.stderr.write(`[resume] restored session ${args.resumeId} (${messages.length} messages)\n`);
+      return { id: args.resumeId, messages };
+    }
+    process.stderr.write(`[resume] session not found: ${args.resumeId}; starting fresh\n`);
+    return newSession(env);
+  }
+
+  if (args.resume) {
+    const sessions = env.memory.listSessions();
+    if (sessions.length === 0) {
+      process.stderr.write('[resume] no saved sessions; starting fresh\n');
+      return newSession(env);
+    }
+    for (let i = 0; i < sessions.length; i++) {
+      process.stderr.write(`  ${i + 1}. ${sessions[i].id}  ${sessions[i].preview}\n`);
+    }
+    const pick = await pickSession(sessions.length);
+    if (pick === null) return null;
+    const chosen = sessions[pick];
+    process.stderr.write(`[resume] restored ${chosen.id}\n`);
+    return { id: chosen.id, messages: env.memory.loadSession(chosen.id)! };
+  }
+
+  return newSession(env);
 }
 
 async function main(): Promise<void> {
@@ -143,24 +197,12 @@ async function main(): Promise<void> {
   const config = loadConfig({ provider: args.provider, model: args.model, maxTurns: args.maxTurns, agentId: args.agent });
   const env: RunEnv = buildEnv(config, { noTools: args.noTools });
 
-  // Start from the previous conversation when --resume is given (per-agent namespace).
-  let messages: Message[];
-  if (args.resume) {
-    const loaded = env.memory.loadSession();
-    if (loaded && loaded.length > 0) {
-      messages = loaded;
-      process.stderr.write(`[resume] restored ${loaded.length} previous messages\n`);
-    } else {
-      messages = newMessages(env);
-      process.stderr.write('[resume] no previous session found; starting fresh\n');
-    }
-  } else {
-    messages = newMessages(env);
-  }
+  const session = await resolveSession(env, args);
+  if (session === null) return; // user quit the resume picker
 
   if (args.jsonl) {
     const transcript = openTranscript(args, false);
-    await runJsonl(env, transcript, messages);
+    await runJsonl(env, transcript, session);
     return;
   }
 
@@ -172,7 +214,7 @@ async function main(): Promise<void> {
 
   if (args.prompt !== undefined) {
     try {
-      await runTurn(env, messages, args.prompt, onEvent);
+      await runTurn(env, session, args.prompt, onEvent);
     } catch (e) {
       printHuman({ type: 'error', message: (e as Error).message });
       process.exitCode = 1;
@@ -181,7 +223,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  await runRepl(env, transcript, messages);
+  await runRepl(env, transcript, session);
 }
 
 main().catch((e) => {

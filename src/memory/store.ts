@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentEvent, Message } from '../types.js';
-import { displayPath } from '../util.js';
+import { displayPath, truncate } from '../util.js';
 import { rank, type Doc } from './search.js';
 
 export interface JournalEntry {
@@ -45,18 +45,29 @@ export class MemoryStore {
   sharedPath(): string {
     return join(this.sharedDir(), 'notes.md');
   }
-  sessionPath(): string {
-    return join(this.selfDir(), 'session.json');
+
+  private sessionsDir(): string {
+    return join(this.selfDir(), 'sessions');
   }
 
-  /** Persist the full conversation history so `--resume` can restore it. */
-  saveSession(messages: Message[]): void {
-    writeFileSync(this.sessionPath(), JSON.stringify(messages), 'utf8');
+  /** Generate a timestamped session id (also usable as a filename). */
+  newSessionId(): string {
+    return new Date().toISOString().replace(/[:.]/g, '-');
   }
 
-  /** Load the last saved conversation history (undefined if none / corrupt). */
-  loadSession(): Message[] | undefined {
-    const path = this.sessionPath();
+  private sessionPath(id: string): string {
+    return join(this.sessionsDir(), `${id}.json`);
+  }
+
+  /** Persist a conversation under its session id so `--resume` can restore it. */
+  saveSession(id: string, messages: Message[]): void {
+    mkdirSync(this.sessionsDir(), { recursive: true });
+    writeFileSync(this.sessionPath(id), JSON.stringify(messages), 'utf8');
+  }
+
+  /** Load a saved conversation by id (undefined if none / corrupt). */
+  loadSession(id: string): Message[] | undefined {
+    const path = this.sessionPath(id);
     if (!existsSync(path)) return undefined;
     try {
       const parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
@@ -64,6 +75,20 @@ export class MemoryStore {
     } catch {
       return undefined;
     }
+  }
+
+  /** List saved sessions, newest first, with a preview of the first user message. */
+  listSessions(): { id: string; preview: string }[] {
+    const dir = this.sessionsDir();
+    if (!existsSync(dir)) return [];
+    const out: { id: string; preview: string }[] = [];
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith('.json')) continue;
+      const id = name.slice(0, -'.json'.length);
+      const firstUser = (this.loadSession(id) ?? []).find((m) => m.role === 'user');
+      out.push({ id, preview: truncate((firstUser?.content ?? '').trim() || '(empty)', 60) });
+    }
+    return out.sort((a, b) => (a.id < b.id ? 1 : -1)); // ISO ids sort newest-first lexicographically
   }
 
   appendJournal(entry: { kind: JournalEntry['kind']; summary: string }): void {

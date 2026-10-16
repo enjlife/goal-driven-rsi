@@ -1,6 +1,6 @@
 import { loadDotEnv, loadConfig, type ConfigOverrides, type ProviderKind } from './config.js';
 import { buildEnv } from './env.js';
-import { newMessages, runTurn, type RunEnv } from './run.js';
+import { newSession, runTurn, type RunEnv } from './run.js';
 import type { AgentEvent, Message } from './types.js';
 
 export type { ProviderKind } from './config.js';
@@ -16,6 +16,12 @@ export interface RunResult {
   stopped?: 'max_turns' | 'loop';
 }
 
+/** A saved-session summary, for listing and resuming. */
+export interface SessionInfo {
+  id: string;
+  preview: string;
+}
+
 /** A library entry point: construct once, then `run()` one-shot prompts. */
 export class Agent {
   private readonly env: RunEnv;
@@ -27,25 +33,46 @@ export class Agent {
 
   /** Run a single prompt to completion in a fresh conversation. */
   async run(prompt: string, onEvent?: (e: AgentEvent) => void): Promise<RunResult> {
-    const { message, turns, stopped } = await runTurn(this.env, newMessages(this.env), prompt, onEvent);
+    const { message, turns, stopped } = await runTurn(this.env, newSession(this.env), prompt, onEvent);
     return { content: message.content, turns, stopped };
   }
 
   /** Start a stateful multi-turn conversation. */
   session(): Session {
-    return new Session(this.env, newMessages(this.env));
+    return Session.start(this.env);
+  }
+
+  /** List saved sessions (newest first). */
+  listSessions(): SessionInfo[] {
+    return this.env.memory.listSessions();
+  }
+
+  /** Resume a saved session by id; undefined if it does not exist. */
+  resume(id: string): Session | undefined {
+    return Session.resume(this.env, id);
   }
 }
 
-/** A stateful conversation; `ask()` keeps context across calls. */
+/** A stateful, named conversation; `ask()` keeps context across calls. */
 export class Session {
-  constructor(
+  private constructor(
     private readonly env: RunEnv,
+    readonly id: string,
     private readonly messages: Message[],
   ) {}
 
+  static start(env: RunEnv, id?: string): Session {
+    const s = newSession(env, id);
+    return new Session(env, s.id, s.messages);
+  }
+
+  static resume(env: RunEnv, id: string): Session | undefined {
+    const messages = env.memory.loadSession(id);
+    return messages ? new Session(env, id, messages) : undefined;
+  }
+
   async ask(content: string, onEvent?: (e: AgentEvent) => void): Promise<RunResult> {
-    const { message, turns, stopped } = await runTurn(this.env, this.messages, content, onEvent);
+    const { message, turns, stopped } = await runTurn(this.env, { id: this.id, messages: this.messages }, content, onEvent);
     return { content: message.content, turns, stopped };
   }
 }

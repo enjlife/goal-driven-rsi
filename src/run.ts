@@ -16,15 +16,26 @@ export interface RunEnv {
   systemPrompt: string;
 }
 
+/** A named, resumable conversation: its id plus the message history. */
+export interface Session {
+  id: string;
+  messages: Message[];
+}
+
 /** Fresh conversation state: a single system message. */
 export function newMessages(env: RunEnv): Message[] {
   return [{ role: 'system', content: env.systemPrompt }];
 }
 
-/** Run one user turn to completion; mutates `messages` and emits events. */
+/** Start a new session with a fresh (timestamped) id. */
+export function newSession(env: RunEnv, id?: string): Session {
+  return { id: id ?? env.memory.newSessionId(), messages: newMessages(env) };
+}
+
+/** Run one user turn to completion; mutates the session and emits events. */
 export async function runTurn(
   env: RunEnv,
-  messages: Message[],
+  session: Session,
   content: string,
   onEvent?: (e: AgentEvent) => void,
 ): Promise<LoopOutcome> {
@@ -33,15 +44,15 @@ export async function runTurn(
     env.memory.record(e);
   };
   emit({ type: 'request', role: 'user', content });
-  messages.push({ role: 'user', content });
-  const outcome = await runAgent(env.provider, env.tools, messages, {
+  session.messages.push({ role: 'user', content });
+  const outcome = await runAgent(env.provider, env.tools, session.messages, {
     maxTurns: env.maxTurns,
     toolContext: env.toolContext,
     maxContextTokens: env.maxContextTokens,
     maxToolResultChars: env.maxToolResultChars,
     onEvent: emit,
   });
-  env.memory.saveSession(messages);
+  env.memory.saveSession(session.id, session.messages);
   return outcome;
 }
 
