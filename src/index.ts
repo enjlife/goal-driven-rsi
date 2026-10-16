@@ -9,8 +9,8 @@ import { buildEnv } from './env.js';
 import { newSession, runTurn, printHuman, type RunEnv, type Session } from './run.js';
 import { runRepl } from './repl.js';
 import { Transcript, writeEventTo, parseIncomingLine } from './jsonl.js';
-import { strictInt } from './util.js';
-import type { AgentEvent } from './types.js';
+import { strictInt, truncate } from './util.js';
+import type { AgentEvent, Message } from './types.js';
 
 const HELP = `goal-driven-rsi — minimal local terminal agent
 
@@ -137,6 +137,31 @@ async function runJsonl(env: RunEnv, transcript: Transcript | null, initial: Ses
   transcript?.close();
 }
 
+/** A short recap of the most recent turns, for showing what a resume continues from. */
+function recap(messages: Message[], maxTurns = 3): string {
+  let start = 0;
+  let count = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user' && ++count === maxTurns) {
+      start = i;
+      break;
+    }
+  }
+  const lines: string[] = [];
+  for (let i = start; i < messages.length; i++) {
+    const m = messages[i];
+    if (m.role === 'system' || m.role === 'tool') continue;
+    if (m.role === 'user') {
+      lines.push(`> ${truncate(m.content ?? '', 120)}`);
+    } else if (m.tool_calls && m.tool_calls.length > 0 && !m.content) {
+      lines.push(`  [tools: ${m.tool_calls.map((t) => t.name).join(', ')}]`);
+    } else if (m.content) {
+      lines.push(`  ${truncate(m.content.replace(/\s+/g, ' ').trim(), 120)}`);
+    }
+  }
+  return lines.join('\n');
+}
+
 /** Interactively pick a session index; non-TTY resumes the latest (0). */
 async function pickSession(count: number): Promise<number | null> {
   if (!process.stdin.isTTY) return 0;
@@ -160,7 +185,7 @@ async function resolveSession(env: RunEnv, args: CliArgs): Promise<Session | nul
   if (args.resumeId) {
     const messages = env.memory.loadSession(args.resumeId);
     if (messages) {
-      process.stderr.write(`[resume] restored session ${args.resumeId} (${messages.length} messages)\n`);
+      process.stderr.write(`[resume] restored session ${args.resumeId} (${messages.length} messages)\n${recap(messages)}\n`);
       return { id: args.resumeId, messages };
     }
     process.stderr.write(`[resume] session not found: ${args.resumeId}; starting fresh\n`);
@@ -179,8 +204,9 @@ async function resolveSession(env: RunEnv, args: CliArgs): Promise<Session | nul
     const pick = await pickSession(sessions.length);
     if (pick === null) return null;
     const chosen = sessions[pick];
-    process.stderr.write(`[resume] restored ${chosen.id}\n`);
-    return { id: chosen.id, messages: env.memory.loadSession(chosen.id)! };
+    const messages = env.memory.loadSession(chosen.id)!;
+    process.stderr.write(`[resume] restored ${chosen.id}\n${recap(messages)}\n`);
+    return { id: chosen.id, messages };
   }
 
   return newSession(env);
