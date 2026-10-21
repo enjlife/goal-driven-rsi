@@ -125,3 +125,41 @@ function reviewPrompt(goal: string, proposals: Proposal[]): string {
     '请给每个方案打分（1-10），按得分排序，说明每个方案的优缺点和最终推荐。',
   ].join('\n');
 }
+
+/**
+ * Ask a planner agent to propose `count` candidate directions for a goal.
+ * Returns the parsed list (best-effort; JSON array preferred, numbered lines as fallback).
+ */
+export async function planDirections(goal: string, count: number, base: AgentOptions = {}): Promise<string[]> {
+  const planner = new Agent({
+    ...base,
+    agentId: 'planner',
+    noTools: true,
+    systemPrompt: '你是一个规划者。给定目标，提出若干个不同的可行方向/策略供选择。只输出 JSON 字符串数组。',
+  });
+  const prompt = `目标：${goal}\n\n请给出 ${count} 个不同的可行方向，每个用一句话概括。严格只输出 JSON 数组，例如 ["方向一", "方向二", "方向三"]。`;
+  const { content } = await planner.run(prompt);
+  return parseDirections(content ?? '');
+}
+
+function parseDirections(text: string): string[] {
+  const trimmed = text.trim();
+  const tryArr = (s: string): string[] | undefined => {
+    try {
+      const arr = JSON.parse(s) as unknown;
+      if (Array.isArray(arr) && arr.every((x) => typeof x === 'string')) return arr as string[];
+    } catch {
+      // fall through
+    }
+    return undefined;
+  };
+  return tryArr(trimmed) ?? tryArr(trimmed.match(/\[[\s\S]*\]/)?.[0] ?? '') ?? numberedFallback(trimmed);
+}
+
+function numberedFallback(text: string): string[] {
+  const lines = text
+    .split('\n')
+    .map((l) => l.replace(/^\s*\d+[.)、]\s*/, '').trim())
+    .filter(Boolean);
+  return lines.length > 0 ? lines : [text.trim()];
+}

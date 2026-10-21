@@ -1,0 +1,11 @@
+{
+  "goal": "让这个 CLI 工具支持流式输出（streaming），说明关键实现步骤和权衡",
+  "directions": 3,
+  "maxRounds": 1,
+  "roles": [
+    { "id": "strategist", "systemPrompt": "你负责制定整体策略与方案。" },
+    { "id": "implementer", "systemPrompt": "你负责实现步骤与细节。" },
+    { "id": "critic", "systemPrompt": "你负责风险评审与质疑。" }
+  ],
+  "base": { "noTools": true, "maxTurns": 8 }
+}

@@ -175,6 +175,33 @@ const { proposals, review, boardPath } = await team.run();
 - `maxRounds` — discussion rounds after the initial propose (default 1); set 0 for propose→review only.
 - `base` — shared provider/model/apiKey/etc. for every member (falls back to env). Set `base: { noTools: true, maxTurns: 8 }` to keep members lean for brainstorming (avoids heavy tool exploration).
 
+### Dynamic planning (`--plan`)
+
+Let a planner agent propose candidate directions, you pick one, then it allocates a team:
+
+```bash
+goal-driven-rsi --plan plan.json            # interactive pick
+goal-driven-rsi --plan plan.json --direction 2   # non-interactive: pick the 2nd
+```
+
+`plan.json`:
+
+```json
+{
+  "goal": "让这个 CLI 工具支持流式输出",
+  "directions": 3,
+  "maxRounds": 1,
+  "roles": [
+    { "id": "strategist", "systemPrompt": "你负责整体策略与方案。" },
+    { "id": "implementer", "systemPrompt": "你负责实现步骤与细节。" },
+    { "id": "critic", "systemPrompt": "你负责风险评审与质疑。" }
+  ],
+  "base": { "noTools": true, "maxTurns": 8 }
+}
+```
+
+Library: `import { planDirections } from 'goal-driven-rsi'` to get the candidate list programmatically.
+
 ## Configuration (env vars)
 
 See `.env.example` for the full annotated list:
