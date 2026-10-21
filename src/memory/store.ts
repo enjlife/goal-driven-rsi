@@ -11,6 +11,15 @@ export interface JournalEntry {
   summary: string;
 }
 
+export interface BoardPost {
+  ts: string;
+  id: string;
+  from: string;
+  kind: 'proposal' | 'review' | 'comment';
+  goal?: string;
+  content: string;
+}
+
 /**
  * File-based long-term memory. Three layers, all under a root directory:
  *   agents/<id>/journal.jsonl  — auto-appended task-level log (harness-driven)
@@ -44,6 +53,9 @@ export class MemoryStore {
   }
   sharedPath(): string {
     return join(this.sharedDir(), 'notes.md');
+  }
+  boardPath(): string {
+    return join(this.sharedDir(), 'board.jsonl');
   }
 
   private sessionsDir(): string {
@@ -89,6 +101,33 @@ export class MemoryStore {
       out.push({ id, preview: truncate((firstUser?.content ?? '').trim() || '(empty)', 60) });
     }
     return out.sort((a, b) => (a.id < b.id ? 1 : -1)); // ISO ids sort newest-first lexicographically
+  }
+
+  /** Append a post to the shared discussion board (recallable across agents). */
+  appendBoard(post: Omit<BoardPost, 'ts' | 'id'>): BoardPost {
+    const full: BoardPost = {
+      ts: new Date().toISOString(),
+      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      ...post,
+    };
+    appendFileSync(this.boardPath(), `${JSON.stringify(full)}\n`, 'utf8');
+    return full;
+  }
+
+  /** Read the most recent board posts (oldest-first within the window). */
+  readBoard(limit = 50): BoardPost[] {
+    const path = this.boardPath();
+    if (!existsSync(path)) return [];
+    const posts: BoardPost[] = [];
+    for (const line of readFileSync(path, 'utf8').split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        posts.push(JSON.parse(line) as BoardPost);
+      } catch {
+        // skip malformed lines
+      }
+    }
+    return posts.slice(-limit);
   }
 
   appendJournal(entry: { kind: JournalEntry['kind']; summary: string }): void {
@@ -183,10 +222,21 @@ export class MemoryStore {
       }
     }
     for (const f of readdirSync(this.sharedDir())) {
-      if (!f.endsWith('.md')) continue;
       const p = join(this.sharedDir(), f);
-      for (const s of splitSections(readFileSync(p, 'utf8'))) {
-        docs.push({ path: displayPath(p), text: s.text, ts: s.ts });
+      if (f.endsWith('.md')) {
+        for (const s of splitSections(readFileSync(p, 'utf8'))) {
+          docs.push({ path: displayPath(p), text: s.text, ts: s.ts });
+        }
+      } else if (f.endsWith('.jsonl')) {
+        for (const line of readFileSync(p, 'utf8').split('\n')) {
+          if (!line.trim()) continue;
+          try {
+            const obj = JSON.parse(line) as { ts?: string; content?: string };
+            if (obj.content) docs.push({ path: displayPath(p), text: obj.content, ts: obj.ts });
+          } catch {
+            // skip malformed lines
+          }
+        }
       }
     }
     return docs;

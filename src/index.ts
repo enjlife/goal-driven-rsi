@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import readline from 'node:readline';
 
@@ -9,6 +9,7 @@ import { buildEnv } from './env.js';
 import { newSession, runTurn, printHuman, type RunEnv, type Session } from './run.js';
 import { runRepl } from './repl.js';
 import { Transcript, writeEventTo, parseIncomingLine } from './jsonl.js';
+import { Team } from './team.js';
 import { strictInt, truncate } from './util.js';
 import type { AgentEvent, Message } from './types.js';
 
@@ -18,10 +19,12 @@ Usage:
   agent                            interactive REPL
   agent -p "prompt"                one-shot (prints final answer to stdout)
   agent --jsonl                    JSONL protocol: read lines from stdin, emit events to stdout
+  agent --team team.json           run a team of sub-agents toward a goal
 
 Options:
   -p, --prompt <text>    run a single prompt and exit
   --jsonl                stdin/stdout JSONL line protocol
+  --team <config.json>   run a multi-agent team (goal + members defined in the JSON)
   --provider <name>      openai | anthropic | mock (default: auto-detect from keys)
   -m, --model <id>       model id override
   --max-turns <n>        max model<->tool round-trips per turn (default 50; soft limit)
@@ -50,6 +53,7 @@ interface CliArgs {
   noSession: boolean;
   resume: boolean;
   resumeId?: string;
+  team?: string;
   help: boolean;
 }
 
@@ -67,6 +71,7 @@ function parseCli(): CliArgs {
       'no-session': { type: 'boolean' },
       resume: { type: 'boolean' },
       'resume-id': { type: 'string' },
+      team: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -91,6 +96,7 @@ function parseCli(): CliArgs {
     noSession: values['no-session'] === true,
     resume: values.resume === true,
     resumeId: values['resume-id'] as string | undefined,
+    team: values.team as string | undefined,
     help: values.help === true,
   };
 }
@@ -212,11 +218,60 @@ async function resolveSession(env: RunEnv, args: CliArgs): Promise<Session | nul
   return newSession(env);
 }
 
+interface TeamConfig {
+  goal: string;
+  members: { id: string; systemPrompt: string }[];
+  maxRounds?: number;
+}
+
+function parseTeamConfig(path: string): TeamConfig {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (e) {
+    throw new Error(`invalid team config: ${(e as Error).message}`);
+  }
+  const c = parsed as Record<string, unknown>;
+  const goal = typeof c.goal === 'string' ? c.goal.trim() : '';
+  if (!goal) throw new Error('team config missing "goal"');
+  if (!Array.isArray(c.members) || c.members.length === 0) throw new Error('team config missing "members"');
+  const members = c.members.map((m) => {
+    const mm = m as Record<string, unknown>;
+    const id = typeof mm.id === 'string' ? mm.id.trim() : '';
+    const systemPrompt = typeof mm.systemPrompt === 'string' ? mm.systemPrompt.trim() : '';
+    if (!id || !systemPrompt) throw new Error('each team member needs "id" and "systemPrompt"');
+    return { id, systemPrompt };
+  });
+  return { goal, members, maxRounds: typeof c.maxRounds === 'number' ? c.maxRounds : undefined };
+}
+
+async function runTeam(args: CliArgs): Promise<void> {
+  const config = parseTeamConfig(args.team!);
+  const team = new Team({
+    goal: config.goal,
+    members: config.members,
+    maxRounds: config.maxRounds,
+    base: { provider: args.provider, model: args.model },
+  });
+  const result = await team.run();
+  console.log(`目标：${result.goal}\n`);
+  for (const p of result.proposals) {
+    console.log(`### ${p.agentId}\n${p.content}\n`);
+  }
+  console.log(`### 评审\n${result.review}\n`);
+  console.log(`[board] ${result.boardPath}`);
+}
+
 async function main(): Promise<void> {
   loadDotEnv();
   const args = parseCli();
   if (args.help) {
     console.log(HELP);
+    return;
+  }
+
+  if (args.team) {
+    await runTeam(args);
     return;
   }
 

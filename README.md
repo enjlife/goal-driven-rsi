@@ -137,6 +137,44 @@ npm publish     # runs prepublishOnly -> build, then publishes dist/
 
 The package is ESM-only (`"type": "module"`), requires Node >= 18, and the unscoped name must be free on npm — scope it (`@yourname/goal-driven-rsi`) if `goal-driven-rsi` is taken.
 
+## Multi-agent team
+
+Run a team of sub-agents toward a goal: members propose in parallel, discuss/refine,
+then a reviewer agent scores the results. Each member is an `Agent` with its own
+`agentId` but a shared memory root, so proposals are written to the shared board
+(`memory/shared/board.jsonl`) and are recallable by any agent via `recall`.
+
+CLI:
+
+```bash
+goal-driven-rsi --team team.json
+```
+
+`team.json`:
+
+```json
+{
+  "goal": "让这个 CLI 工具支持流式输出，说明关键步骤和权衡",
+  "maxRounds": 1,
+  "members": [
+    { "id": "architect", "systemPrompt": "你是资深软件架构师，擅长系统设计与权衡。" },
+    { "id": "engineer", "systemPrompt": "你是资深工程师，擅长实现细节与性能优化。" }
+  ]
+}
+```
+
+Library:
+
+```ts
+import { Team } from 'goal-driven-rsi';
+
+const team = new Team({ goal, members, maxRounds: 1, base: { provider: 'anthropic' } });
+const { proposals, review, boardPath } = await team.run();
+```
+
+- `maxRounds` — discussion rounds after the initial propose (default 1); set 0 for propose→review only.
+- `base` — shared provider/model/apiKey/etc. for every member (falls back to env). Set `base: { noTools: true, maxTurns: 8 }` to keep members lean for brainstorming (avoids heavy tool exploration).
+
 ## Configuration (env vars)
 
 See `.env.example` for the full annotated list:

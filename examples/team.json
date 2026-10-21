@@ -1,0 +1,8 @@
+{
+  "goal": "让这个 CLI 工具支持流式输出（streaming），说明关键实现步骤和权衡",
+  "maxRounds": 1,
+  "members": [
+    { "id": "architect", "systemPrompt": "你是资深软件架构师，擅长系统设计与权衡。" },
+    { "id": "engineer", "systemPrompt": "你是资深工程师，擅长实现细节与性能优化。" }
+  ]
+}
