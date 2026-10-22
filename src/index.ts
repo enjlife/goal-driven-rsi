@@ -4,12 +4,12 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import readline from 'node:readline';
 
-import { loadDotEnv, loadConfig, type ProviderKind } from './config.js';
+import { loadDotEnv, loadConfig, type ProviderKind, type Config } from './config.js';
 import { buildEnv } from './env.js';
 import { newSession, runTurn, printHuman, type RunEnv, type Session } from './run.js';
 import { runRepl } from './repl.js';
 import { Transcript, writeEventTo, parseIncomingLine } from './jsonl.js';
-import { Team, planDirections, type TeamResult } from './team.js';
+import { Team, planDirections, planOrDirect, runAutoTeam, teamBase, type TeamResult } from './team.js';
 import type { AgentOptions } from './agent.js';
 import { strictInt, truncate } from './util.js';
 import type { AgentEvent, Message } from './types.js';
@@ -29,6 +29,7 @@ Options:
   --team <config.json>   run a multi-agent team (goal + members defined in the JSON)
   --plan <config.json>   plan directions -> choose one -> allocate a team (goal + roles)
   --direction <n>        with --plan: pick the n-th direction (1-based, non-interactive)
+  --no-plan              disable auto-planning (tasks run directly, no direction choice)
   --provider <name>      openai | anthropic | mock (default: auto-detect from keys)
   -m, --model <id>       model id override
   --max-turns <n>        max model<->tool round-trips per turn (default 50; soft limit)
@@ -60,6 +61,7 @@ interface CliArgs {
   team?: string;
   plan?: string;
   direction?: string;
+  noPlan: boolean;
   help: boolean;
 }
 
@@ -80,6 +82,7 @@ function parseCli(): CliArgs {
       team: { type: 'string' },
       plan: { type: 'string' },
       direction: { type: 'string' },
+      'no-plan': { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -107,6 +110,7 @@ function parseCli(): CliArgs {
     team: values.team as string | undefined,
     plan: values.plan as string | undefined,
     direction: values.direction as string | undefined,
+    noPlan: values['no-plan'] === true,
     help: values.help === true,
   };
 }
@@ -354,6 +358,51 @@ async function runPlan(args: CliArgs): Promise<void> {
   printTeamResult(await team.run());
 }
 
+/** Interactive direction picker; returns -1=direct, null=quit, or 0..N-1. */
+async function chooseDirection(directions: string[]): Promise<number | null> {
+  process.stderr.write('方向候选：\n  0. 直接执行（不选方向）\n');
+  directions.forEach((d, i) => process.stderr.write(`  ${i + 1}. ${d}\n`));
+  if (!process.stdin.isTTY) return 0;
+  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    const answer = await new Promise<string>((resolve) => rl.question('选择方向 [0-N, Enter=第1个, q=退出]: ', resolve));
+    const t = answer.trim();
+    if (t === 'q' || t === 'Q') return null;
+    if (t === '0') return -1;
+    if (t === '') return 0;
+    const n = Number.parseInt(t, 10);
+    return Number.isFinite(n) && n >= 1 && n <= directions.length ? n - 1 : 0;
+  } finally {
+    rl.close();
+  }
+}
+
+/**
+ * Run a task, auto-planning when enabled and interactive: if the planner sees
+ * multiple directions, let the user pick one and run a team; otherwise run directly.
+ */
+async function runTaskAuto(env: RunEnv, session: Session, task: string, config: Config, onEvent: (e: AgentEvent) => void): Promise<void> {
+  if (!config.autoPlan || !process.stdin.isTTY) {
+    await runTurn(env, session, task, onEvent);
+    return;
+  }
+  process.stderr.write('自动规划方向...\n');
+  const decision = await planOrDirect(task, teamBase(config));
+  if (decision.mode === 'direct') {
+    await runTurn(env, session, task, onEvent);
+    return;
+  }
+  const idx = await chooseDirection(decision.directions);
+  if (idx === null) return;
+  if (idx < 0) {
+    await runTurn(env, session, task, onEvent);
+    return;
+  }
+  const chosen = decision.directions[idx];
+  process.stderr.write(`选定方向：${chosen}\n\n`);
+  printTeamResult(await runAutoTeam(task, chosen, teamBase(config)));
+}
+
 async function main(): Promise<void> {
   loadDotEnv();
   const args = parseCli();
@@ -392,7 +441,7 @@ async function main(): Promise<void> {
 
   if (args.prompt !== undefined) {
     try {
-      await runTurn(env, session, args.prompt, onEvent);
+      await runTaskAuto(env, session, args.prompt, config, onEvent);
     } catch (e) {
       printHuman({ type: 'error', message: (e as Error).message });
       process.exitCode = 1;
@@ -401,7 +450,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  await runRepl(env, transcript, session);
+  await runRepl(env, transcript, session, config);
 }
 
 main().catch((e) => {

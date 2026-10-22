@@ -17,6 +17,7 @@ export interface Config {
   retry: { maxRetries: number; baseMs: number };
   maxContextTokens: number;
   maxToolResultChars: number;
+  autoPlan: boolean;
   openai: { apiKey?: string; baseUrl: string; model: string };
   anthropic: { apiKey?: string; authToken?: string; baseUrl: string; model: string; maxTokens: number };
 }
@@ -76,12 +77,20 @@ function intEnv(name: string, fallback: number, min = 0): number {
   return strictInt(raw.trim(), name, min);
 }
 
+/** Read a boolean env var; unset/empty falls back. */
+function boolEnv(name: string, fallback: boolean): boolean {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  return !/^(0|false|no|off)$/i.test(raw.trim());
+}
+
 export interface ConfigOverrides {
   provider?: ProviderKind;
   model?: string;
   maxTurns?: number;
   agentId?: string;
   noTools?: boolean;
+  noPlan?: boolean;
   apiKey?: string;
   baseUrl?: string;
   workdir?: string;
@@ -151,6 +160,7 @@ export function loadConfig(overrides: ConfigOverrides = {}): Config {
     },
     maxContextTokens: intEnv('AGENT_MAX_CONTEXT_TOKENS', 128000, 1),
     maxToolResultChars: intEnv('AGENT_MAX_TOOL_RESULT_CHARS', 8000, 1),
+    autoPlan: overrides.noPlan === true ? false : boolEnv('AGENT_AUTO_PLAN', true),
     openai,
     anthropic,
   };

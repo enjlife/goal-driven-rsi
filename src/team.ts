@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { loadDotEnv } from './config.js';
+import { loadDotEnv, type Config } from './config.js';
 import { Agent, type AgentOptions } from './agent.js';
 import { MemoryStore } from './memory/store.js';
 
@@ -27,6 +27,12 @@ export interface TeamResult {
   proposals: Proposal[];
   review: string;
   boardPath: string;
+}
+
+/** Shared base config for a team/planner, derived from a resolved Config. */
+export function teamBase(config: Config): AgentOptions {
+  const model = config.provider === 'openai' ? config.openai.model : config.anthropic.model;
+  return { provider: config.provider, model, memoryDir: config.memoryDir };
 }
 
 /**
@@ -140,6 +146,56 @@ export async function planDirections(goal: string, count: number, base: AgentOpt
   const prompt = `目标：${goal}\n\n请给出 ${count} 个不同的可行方向，每个用一句话概括。严格只输出 JSON 数组，例如 ["方向一", "方向二", "方向三"]。`;
   const { content } = await planner.run(prompt);
   return parseDirections(content ?? '');
+}
+
+/** Default role roster used when auto-planning a team without an explicit config. */
+export const AUTO_PLAN_ROLES: TeamMember[] = [
+  { id: 'strategist', systemPrompt: '你负责制定整体策略与方案。' },
+  { id: 'implementer', systemPrompt: '你负责实现步骤与细节。' },
+  { id: 'critic', systemPrompt: '你负责风险评审与质疑。' },
+];
+
+/** Run a team with the default roles, each anchored to the chosen direction. */
+export async function runAutoTeam(goal: string, direction: string, base: AgentOptions, maxRounds = 1): Promise<TeamResult> {
+  const members = AUTO_PLAN_ROLES.map((r) => ({ id: r.id, systemPrompt: `${r.systemPrompt}\n\n当前选定方向：${direction}` }));
+  const team = new Team({ goal, members, maxRounds, base });
+  return team.run();
+}
+
+export type PlanDecision = { mode: 'direct' } | { mode: 'plan'; directions: string[] };
+
+/**
+ * Auto-dispatch: ask a planner whether a task needs candidate directions.
+ * Trivial/clear tasks return { mode: 'direct' }; otherwise return the directions.
+ */
+export async function planOrDirect(task: string, base: AgentOptions = {}): Promise<PlanDecision> {
+  const planner = new Agent({
+    ...base,
+    agentId: 'planner',
+    noTools: true,
+    systemPrompt: '你是任务分派器。判断任务是否需要先提出多个方向供用户选择。只输出一个 JSON 对象。',
+  });
+  const prompt =
+    `任务：${task}\n\n` +
+    '如果任务明确、只有一个合理做法（简单问答、明确指令、单一操作），输出 {"direct":true}。\n' +
+    '否则输出 {"direct":false,"directions":["方向1","方向2",...]}，给 2-4 个不同方向，每个用一句话。';
+  const { content } = await planner.run(prompt);
+  const obj = extractJsonObject(content ?? '');
+  if (obj && obj.direct === true) return { mode: 'direct' };
+  if (obj && Array.isArray(obj.directions) && obj.directions.every((d) => typeof d === 'string') && obj.directions.length > 0) {
+    return { mode: 'plan', directions: obj.directions as string[] };
+  }
+  return { mode: 'direct' }; // fail-safe: just do it directly
+}
+
+function extractJsonObject(text: string): Record<string, unknown> | undefined {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return undefined;
+  try {
+    return JSON.parse(m[0]) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
 }
 
 function parseDirections(text: string): string[] {

@@ -61,9 +61,15 @@ Give each sub-agent its own id in a multi-agent setup: `node dist/index.js --age
 agent                            interactive REPL (/reset, /exit)
 agent -p "prompt"                one-shot
 agent --jsonl                    JSONL protocol on stdin/stdout
+agent --team team.json           run a team of sub-agents toward a goal
+agent --plan plan.json           plan directions -> choose -> allocate a team
 
 -p, --prompt <text>    run a single prompt and exit
 --jsonl                stdin/stdout JSONL line protocol
+--team <config.json>   run a multi-agent team (goal + members defined in the JSON)
+--plan <config.json>   plan directions -> choose one -> allocate a team (goal + roles)
+--direction <n>        with --plan: pick the n-th direction (1-based, non-interactive)
+--no-plan              disable auto-planning (tasks run directly)
 --provider <name>      openai | anthropic | mock  (default: auto-detect)
 -m, --model <id>       model id override
 --max-turns <n>        max model<->tool round-trips per turn (default 50; soft limit)
@@ -174,6 +180,20 @@ const { proposals, review, boardPath } = await team.run();
 
 - `maxRounds` — discussion rounds after the initial propose (default 1); set 0 for propose→review only.
 - `base` — shared provider/model/apiKey/etc. for every member (falls back to env). Set `base: { noTools: true, maxTurns: 8 }` to keep members lean for brainstorming (avoids heavy tool exploration).
+
+### Auto-plan (no flag needed)
+
+In an interactive terminal, just give a task and the agent decides automatically:
+
+```
+goal-driven-rsi -p "让 CLI 支持流式输出"    # or type it in the REPL
+```
+
+A planner judges the task:
+- **Trivial/clear task** → runs directly (e.g. "1+1 等于几").
+- **Open-ended task** → proposes 2-4 directions, you pick one (or `0` = run directly), then a team runs the chosen direction.
+
+Disabled automatically for non-interactive/scripted runs; force it off with `--no-plan` or `AGENT_AUTO_PLAN=off`. The default roles are strategist / implementer / critic.
 
 ### Dynamic planning (`--plan`)
 
