@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import readline from 'node:readline';
 
-import { loadDotEnv, loadConfig, type ProviderKind } from './config.js';
+import { loadDotEnv, loadConfig, loadModelCatalog, describeModel, type ProviderKind } from './config.js';
 import { buildEnv } from './env.js';
 import { newSession, runTurn, printHuman, type RunEnv, type Session } from './run.js';
 import { runRepl } from './repl.js';
@@ -31,7 +31,9 @@ Options:
   --plan <config.json>   plan directions -> choose one -> allocate a team (goal + roles)
   --direction <n>        with --plan: pick the n-th direction (1-based, non-interactive)
   --provider <name>      openai | anthropic | mock (default: auto-detect from keys)
-  -m, --model <id>       model id override
+  -m, --model <name>     model profile from models.json, or a raw model id
+                         (default: models.json "default", else env settings)
+  --models               list model profiles from models.json and exit
   --max-turns <n>        max model<->tool round-trips per turn (default 50; soft limit)
   --agent <id>           agent identity for long-term memory (default: main)
   --no-tools             disable tool calling (pure chat)
@@ -61,6 +63,7 @@ interface CliArgs {
   team?: string;
   plan?: string;
   direction?: string;
+  models: boolean;
   help: boolean;
 }
 
@@ -81,6 +84,7 @@ function parseCli(): CliArgs {
       team: { type: 'string' },
       plan: { type: 'string' },
       direction: { type: 'string' },
+      models: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -108,6 +112,7 @@ function parseCli(): CliArgs {
     team: values.team as string | undefined,
     plan: values.plan as string | undefined,
     direction: values.direction as string | undefined,
+    models: values.models === true,
     help: values.help === true,
   };
 }
@@ -355,11 +360,31 @@ async function runPlan(args: CliArgs): Promise<void> {
   printTeamResult(await team.run());
 }
 
+function printModels(): void {
+  const catalog = loadModelCatalog();
+  const names = Object.keys(catalog.models);
+  if (names.length === 0) {
+    console.log('(no model profiles; create models.json — see models.example.json)');
+    return;
+  }
+  for (const name of names) {
+    const p = catalog.models[name];
+    const mark = name === catalog.default ? '*' : ' ';
+    console.log(`${mark} ${name}  ${p.provider}/${p.model}${p.baseUrl ? `  ${p.baseUrl}` : ''}`);
+  }
+  console.log(`\n(* = default) from ${catalog.sources.join(', ')}`);
+}
+
 async function main(): Promise<void> {
   loadDotEnv();
   const args = parseCli();
   if (args.help) {
     console.log(HELP);
+    return;
+  }
+
+  if (args.models) {
+    printModels();
     return;
   }
 
@@ -382,6 +407,9 @@ async function main(): Promise<void> {
 
   const session = await resolveSession(env, args);
   if (session === null) return; // user quit the resume picker
+  // Resuming with an explicit model: the saved raw blocks may belong to another model.
+  if (args.model) for (const m of session.messages) delete m.raw;
+  if (!args.jsonl) process.stderr.write(`[model] ${describeModel(config)}\n`);
 
   if (args.jsonl) {
     const transcript = openTranscript(args, false);
@@ -406,7 +434,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  await runRepl(env, transcript, session, config);
+  await runRepl(env, transcript, session, config, { maxTurns: args.maxTurns, agentId: args.agent });
 }
 
 main().catch((e) => {

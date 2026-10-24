@@ -4,3 +4,4 @@ dist/
 sessions/
 /memory/
 *.log
+models.json

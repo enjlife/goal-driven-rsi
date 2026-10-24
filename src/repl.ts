@@ -3,7 +3,8 @@ import type { AgentEvent } from './types.js';
 import { newSession, runTurn, printHuman, type RunEnv, type Session } from './run.js';
 import type { Transcript } from './jsonl.js';
 import { clarifyOptions, runFanOut, teamBase } from './team.js';
-import type { Config } from './config.js';
+import { loadConfig, loadModelCatalog, describeModel, type Config, type ConfigOverrides } from './config.js';
+import { createProvider } from './providers/provider.js';
 import { LineReader, askUserVia } from './ask.js';
 
 const DIRECTION_COUNT = 3;
@@ -37,7 +38,49 @@ function parseSelection(input: string, max: number): number[] | null {
   return [...indices].sort((a, b) => a - b);
 }
 
-export async function runRepl(env: RunEnv, transcript: Transcript | null, initial: Session, config: Config): Promise<void> {
+/** `/model` with no argument: list profiles, marking the active one. */
+function printModelList(config: Config): void {
+  const catalog = loadModelCatalog();
+  const names = Object.keys(catalog.models);
+  console.log(`当前模型：${describeModel(config)}`);
+  if (names.length === 0) {
+    console.log('(models.json 中没有模型配置)');
+    return;
+  }
+  for (const name of names) {
+    const p = catalog.models[name];
+    const mark = name === config.modelName ? '>' : ' ';
+    const def = name === catalog.default ? ' (default)' : '';
+    console.log(`${mark} ${name}  ${p.provider}/${p.model}${def}`);
+  }
+  console.log('切换：/model <name>');
+}
+
+/**
+ * Switch the session to another model profile in place. Provider-specific raw
+ * blocks (e.g. Anthropic thinking signatures) are dropped, since another model
+ * would reject them; the plain history is kept.
+ */
+function switchModel(env: RunEnv, session: Session, name: string, base: ConfigOverrides): Config {
+  const known = Object.keys(loadModelCatalog().models);
+  if (known.length > 0 && !known.includes(name)) {
+    throw new Error(`未知模型 "${name}"，可选：${known.join(', ')}`);
+  }
+  const next = loadConfig({ ...base, model: name });
+  env.provider = createProvider(next.provider, next);
+  env.maxContextTokens = next.maxContextTokens;
+  for (const m of session.messages) delete m.raw;
+  return next;
+}
+
+export async function runRepl(
+  env: RunEnv,
+  transcript: Transcript | null,
+  initial: Session,
+  initialConfig: Config,
+  overrides: ConfigOverrides = {},
+): Promise<void> {
+  let config = initialConfig;
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: 'agent> ' });
   rl.on('SIGINT', () => {
     // Ctrl+C on an empty line exits; otherwise it just cancels the current line.
@@ -56,7 +99,7 @@ export async function runRepl(env: RunEnv, transcript: Transcript | null, initia
     transcript?.write(e);
   };
 
-  console.log('REPL. /goal <task> 澄清+多子agent · /directions <task> 选单个方向 · /reset · /exit');
+  console.log('REPL. /goal <task> 澄清+多子agent · /directions <task> 选单个方向 · /model [name] 查看/切换模型 · /reset · /exit');
   rl.prompt();
 
   for (;;) {
@@ -106,6 +149,22 @@ export async function runRepl(env: RunEnv, transcript: Transcript | null, initia
     if (trimmed === '/reset') {
       session = newSession(env);
       console.log('[reset] conversation cleared');
+      rl.prompt();
+      continue;
+    }
+
+    if (trimmed === '/model' || trimmed.startsWith('/model ')) {
+      const name = trimmed.slice('/model'.length).trim();
+      try {
+        if (!name) {
+          printModelList(config);
+        } else {
+          config = switchModel(env, session, name, overrides);
+          console.log(`[model] 已切换到 ${describeModel(config)}`);
+        }
+      } catch (e) {
+        console.log(`[error] ${(e as Error).message}`);
+      }
       rl.prompt();
       continue;
     }

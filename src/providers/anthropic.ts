@@ -60,6 +60,20 @@ function toAnthropicMessages(messages: Message[]): { system: string; msgs: Recor
     if (m.role === 'assistant') {
       if (m.raw) {
         msgs.push({ role: 'assistant', content: m.raw });
+      } else if (m.tool_calls && m.tool_calls.length > 0) {
+        // No raw blocks (e.g. history from another provider): rebuild tool_use blocks.
+        const blocks: Record<string, unknown>[] = [];
+        if (m.content) blocks.push({ type: 'text', text: m.content });
+        for (const tc of m.tool_calls) {
+          let input: unknown = {};
+          try {
+            input = JSON.parse(tc.arguments || '{}');
+          } catch {
+            // keep {} for malformed arguments
+          }
+          blocks.push({ type: 'tool_use', id: tc.id, name: tc.name, input });
+        }
+        msgs.push({ role: 'assistant', content: blocks });
       } else {
         msgs.push({ role: 'assistant', content: m.content ?? '' });
       }

@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { loadDotEnv, type Config } from './config.js';
+import { loadDotEnv, activeModelId, type Config } from './config.js';
 import { Agent, type AgentOptions } from './agent.js';
 import { MemoryStore } from './memory/store.js';
 
@@ -31,7 +31,8 @@ export interface TeamResult {
 
 /** Shared base config for a team/planner, derived from a resolved Config. */
 export function teamBase(config: Config): AgentOptions {
-  const model = config.provider === 'openai' ? config.openai.model : config.anthropic.model;
+  // Pass the profile name (not just the id) so its endpoint/credentials carry over.
+  const model = config.modelName ?? activeModelId(config);
   return { provider: config.provider, model, memoryDir: config.memoryDir };
 }
 

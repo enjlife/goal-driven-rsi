@@ -20,7 +20,44 @@ node dist/index.js -p "list files in the current directory"
 node dist/index.js -p "run a shell test" --provider mock
 ```
 
-Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` (see `.env.example`; a `.env` file is auto-loaded). Default model: `claude-opus-5-5` (Anthropic) / `gpt-4o-mini` (OpenAI) — override with `-m` / `ANTHROPIC_MODEL` / `OPENAI_MODEL`.
+Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` (see `.env.example`; a `.env` file is auto-loaded). Default model: `claude-opus-5-5` (Anthropic) / `gpt-4o-mini` (OpenAI) — override with `-m` / `ANTHROPIC_MODEL` / `OPENAI_MODEL`, or define several named models in `models.json` (below).
+
+## Multiple models (`models.json`)
+
+Define named model profiles — each with its own provider, endpoint and credentials — and a `default`:
+
+```bash
+cp models.example.json models.json   # then edit
+```
+
+```json
+{
+  "default": "opus",
+  "models": {
+    "opus":     { "provider": "anthropic", "model": "claude-opus-5-5", "apiKeyEnv": "ANTHROPIC_API_KEY" },
+    "deepseek": { "provider": "anthropic", "model": "deepseek-chat", "baseUrl": "https://api.deepseek.com/anthropic", "authTokenEnv": "DEEPSEEK_API_KEY" },
+    "gpt":      { "provider": "openai", "model": "gpt-4o-mini", "apiKeyEnv": "OPENAI_API_KEY" }
+  }
+}
+```
+
+Pick one when entering a session; without `-m` the `default` is used:
+
+```bash
+goal-driven-rsi                  # default profile
+goal-driven-rsi -m deepseek      # a named profile
+goal-driven-rsi --resume -m gpt  # continue a saved session with another model
+goal-driven-rsi --models         # list profiles (* = default)
+```
+
+In the REPL, `/model` lists profiles and `/model <name>` switches the current session in place.
+
+- Fields: `provider` (required), `model` (required except for `mock`), `baseUrl`, `apiKey` / `apiKeyEnv`, `authToken` / `authTokenEnv` (Anthropic bearer token), `maxTokens` (Anthropic), `maxContextTokens`.
+- Prefer `apiKeyEnv` / `authTokenEnv` (the name of an env var, which may live in `.env`) over putting secrets in the file. `models.json` is gitignored anyway.
+- Unset fields fall back to the provider's env settings (`ANTHROPIC_BASE_URL`, `OPENAI_API_KEY`, …); if a profile sets any credential, the env credentials are ignored.
+- Files: `~/.config/goal-driven-rsi/models.json` (user) and `./models.json` (project) are merged by name, project wins. `AGENT_MODELS_FILE` points to a single file instead; `AGENT_MODEL=<name>` selects a profile without `-m`.
+- Selection: `-m <name>` > `AGENT_MODEL` > the file's `default` (skipped when `--provider` is forced) > plain env config. `-m` with a name that is not a profile is still treated as a raw model id.
+- When the model changes mid-session, provider-specific raw blocks (Anthropic thinking signatures) are dropped from history; the plain conversation is kept.
 
 ## Tools
 
@@ -59,7 +96,7 @@ Give each sub-agent its own id in a multi-agent setup: `node dist/index.js --age
 ## CLI
 
 ```
-agent                            interactive REPL (/reset, /exit)
+agent                            interactive REPL (/model, /reset, /exit)
 agent -p "prompt"                one-shot
 agent --jsonl                    JSONL protocol on stdin/stdout
 agent --team team.json           run a team of sub-agents toward a goal
@@ -71,7 +108,8 @@ agent --plan plan.json           plan directions -> choose -> allocate a team
 --plan <config.json>   plan directions -> choose one -> allocate a team (goal + roles)
 --direction <n>        with --plan: pick the n-th direction (1-based, non-interactive)
 --provider <name>      openai | anthropic | mock  (default: auto-detect)
--m, --model <id>       model id override
+-m, --model <name>     model profile from models.json (or a raw model id); default: its "default"
+--models               list model profiles and exit
 --max-turns <n>        max model<->tool round-trips per turn (default 50; soft limit)
 --agent <id>           agent identity for long-term memory (default: main)
 --no-tools             pure chat, no tools
@@ -234,6 +272,7 @@ See `.env.example` for the full annotated list:
 
 - Provider: `AGENT_PROVIDER`, `OPENAI_API_KEY`/`OPENAI_BASE_URL`/`OPENAI_MODEL`, `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL`/`ANTHROPIC_MODEL`/`ANTHROPIC_MAX_TOKENS`
 - Behaviour: `AGENT_WORKDIR`, `AGENT_MAX_TURNS`, `AGENT_SHELL_TIMEOUT_MS`, `AGENT_SYSTEM_PROMPT`
+- Models: `AGENT_MODELS_FILE`, `AGENT_MODEL` (see [Multiple models](#multiple-models-modelsjson))
 - Memory: `AGENT_MEMORY_DIR`, `AGENT_ID`
 - Skills: `AGENT_SKILLS_DIR`
 - Retry & context: `AGENT_MAX_RETRIES`, `AGENT_RETRY_BASE_MS`, `AGENT_MAX_CONTEXT_TOKENS`, `AGENT_MAX_TOOL_RESULT_CHARS`
