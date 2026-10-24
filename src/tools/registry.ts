@@ -11,6 +11,8 @@ export interface ToolContext {
   shellTimeoutMs: number;
   memory: MemoryStore;
   skills: SkillStore;
+  /** Interactive user-input callback for the `ask_user` tool (undefined = unavailable). */
+  askUser?: (question: string, options?: string[]) => Promise<string>;
 }
 
 export function toolDefs(): ToolDef[] {
@@ -124,6 +126,21 @@ export function toolDefs(): ToolDef[] {
         additionalProperties: false,
       },
     },
+    {
+      name: 'ask_user',
+      description:
+        'Ask the user a question to clarify the request. Use when the request is ambiguous or needs the user to pick a direction/option. ' +
+        '`options` is an optional list of choices; the user can pick one, several (comma-separated), or type free text.',
+      parameters: {
+        type: 'object',
+        properties: {
+          question: { type: 'string', description: 'The question to ask the user.' },
+          options: { type: 'array', items: { type: 'string' }, description: 'Optional choices to offer.' },
+        },
+        required: ['question'],
+        additionalProperties: false,
+      },
+    },
   ];
 }
 
@@ -179,6 +196,16 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<Too
         return readSkill(ctx.skills, args);
       case 'create_skill':
         return createSkill(ctx.skills, args);
+      case 'ask_user': {
+        const question = typeof args.question === 'string' ? args.question.trim() : '';
+        if (!question) return { ok: false, error: 'missing "question"' };
+        const options = Array.isArray(args.options)
+          ? args.options.filter((o): o is string => typeof o === 'string')
+          : undefined;
+        if (!ctx.askUser) return { ok: false, error: 'ask_user is not available in this (non-interactive) mode' };
+        const answer = await ctx.askUser(question, options);
+        return { ok: true, output: answer || '(no answer)' };
+      }
       default:
         return { ok: false, error: `unknown tool: ${call.name}` };
     }

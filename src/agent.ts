@@ -5,7 +5,7 @@ import type { AgentEvent, Message } from './types.js';
 
 export type { ProviderKind } from './config.js';
 export type { AgentEvent, Message, ToolCall, ToolDef } from './types.js';
-export { Team, planDirections, planOrDirect, AUTO_PLAN_ROLES, type TeamOptions, type TeamMember, type TeamResult, type Proposal, type PlanDecision } from './team.js';
+export { Team, planDirections, planOrDirect, clarifyOptions, runFanOut, runAutoTeam, AUTO_PLAN_ROLES, type TeamOptions, type TeamMember, type TeamResult, type Proposal, type PlanDecision } from './team.js';
 
 /** Programmatic options; unset fields fall back to env vars / defaults. */
 export interface AgentOptions extends ConfigOverrides {}

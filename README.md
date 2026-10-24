@@ -33,6 +33,7 @@ Three minimal tools, defined with JSON Schema and dispatched by the loop:
 | `write_file` | Create/overwrite a UTF-8 text file (relative to workdir, `..` escapes rejected). |
 | `remember` | Write a long-term memory: a curated insight (`scope: "self"`) or cross-agent shared knowledge (`scope: "shared"`). |
 | `recall` | Search long-term memory across all agents' insights, shared knowledge and journals; omit the query to list your recent journal entries. |
+| `ask_user` | Ask the user a clarifying question (with optional choices) when the request is ambiguous; the user can pick one, several, or type free text. |
 
 Disable tools entirely with `--no-tools`.
 
@@ -69,7 +70,6 @@ agent --plan plan.json           plan directions -> choose -> allocate a team
 --team <config.json>   run a multi-agent team (goal + members defined in the JSON)
 --plan <config.json>   plan directions -> choose one -> allocate a team (goal + roles)
 --direction <n>        with --plan: pick the n-th direction (1-based, non-interactive)
---no-plan              disable auto-planning (tasks run directly)
 --provider <name>      openai | anthropic | mock  (default: auto-detect)
 -m, --model <id>       model id override
 --max-turns <n>        max model<->tool round-trips per turn (default 50; soft limit)
@@ -181,19 +181,25 @@ const { proposals, review, boardPath } = await team.run();
 - `maxRounds` — discussion rounds after the initial propose (default 1); set 0 for propose→review only.
 - `base` — shared provider/model/apiKey/etc. for every member (falls back to env). Set `base: { noTools: true, maxTurns: 8 }` to keep members lean for brainstorming (avoids heavy tool exploration).
 
-### Auto-plan (no flag needed)
+### REPL: `/goal` and `/directions`
 
-In an interactive terminal, just give a task and the agent decides automatically:
+Normal mode runs a single agent directly. Two commands add clarification-based
+direction selection — they detect the ambiguous parts of a request and offer options:
+
+- `/goal <task>` — goal mode: pick **one or more** options (comma/range/`all`);
+  each selected option is implemented by a sub-agent, in parallel.
+- `/directions <task>` — normal mode: pick **one** direction (or `0` = run directly); the single agent follows it.
 
 ```
-goal-driven-rsi -p "让 CLI 支持流式输出"    # or type it in the REPL
+agent> /goal 让 CLI 支持流式输出
+澄清需求...
+方向候选（可多选，逗号分隔如 1,3；all 全选）：
+  1. …方向一…
+  2. …方向二…
+  3. …方向三…
+选择 [1-N / all, q=取消]：1,3
+选定 2 个方向，派发子 agent 并行实现...
 ```
-
-A planner judges the task:
-- **Trivial/clear task** → runs directly (e.g. "1+1 等于几").
-- **Open-ended task** → proposes 2-4 directions, you pick one (or `0` = run directly), then a team runs the chosen direction.
-
-Disabled automatically for non-interactive/scripted runs; force it off with `--no-plan` or `AGENT_AUTO_PLAN=off`. The default roles are strategist / implementer / critic.
 
 ### Dynamic planning (`--plan`)
 

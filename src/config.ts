@@ -17,7 +17,6 @@ export interface Config {
   retry: { maxRetries: number; baseMs: number };
   maxContextTokens: number;
   maxToolResultChars: number;
-  autoPlan: boolean;
   openai: { apiKey?: string; baseUrl: string; model: string };
   anthropic: { apiKey?: string; authToken?: string; baseUrl: string; model: string; maxTokens: number };
 }
@@ -25,7 +24,8 @@ export interface Config {
 const DEFAULT_SYSTEM_PROMPT =
   'You are a helpful terminal agent. You have tools available to run shell commands and read/write files. ' +
   'Use a tool when it helps complete the user goal; otherwise answer directly. Be concise. ' +
-  'You also have long-term memory (remember/recall) and reusable skills (list_skills/read_skill/create_skill); use them when they help.';
+  'You also have long-term memory (remember/recall) and reusable skills (list_skills/read_skill/create_skill); use them when they help. ' +
+  'If the request is ambiguous or needs the user to choose a direction, ask the user with the ask_user tool first, then continue; do not over-ask.';
 
 /** Parse a `.env`-style file into a map (missing file -> empty map). */
 function parseEnvFile(path: string): Record<string, string> {
@@ -77,20 +77,12 @@ function intEnv(name: string, fallback: number, min = 0): number {
   return strictInt(raw.trim(), name, min);
 }
 
-/** Read a boolean env var; unset/empty falls back. */
-function boolEnv(name: string, fallback: boolean): boolean {
-  const raw = process.env[name];
-  if (raw === undefined || raw.trim() === '') return fallback;
-  return !/^(0|false|no|off)$/i.test(raw.trim());
-}
-
 export interface ConfigOverrides {
   provider?: ProviderKind;
   model?: string;
   maxTurns?: number;
   agentId?: string;
   noTools?: boolean;
-  noPlan?: boolean;
   apiKey?: string;
   baseUrl?: string;
   workdir?: string;
@@ -160,7 +152,6 @@ export function loadConfig(overrides: ConfigOverrides = {}): Config {
     },
     maxContextTokens: intEnv('AGENT_MAX_CONTEXT_TOKENS', 128000, 1),
     maxToolResultChars: intEnv('AGENT_MAX_TOOL_RESULT_CHARS', 8000, 1),
-    autoPlan: overrides.noPlan === true ? false : boolEnv('AGENT_AUTO_PLAN', true),
     openai,
     anthropic,
   };

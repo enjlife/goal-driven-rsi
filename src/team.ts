@@ -148,6 +148,44 @@ export async function planDirections(goal: string, count: number, base: AgentOpt
   return parseDirections(content ?? '');
 }
 
+/**
+ * Ask a clarifier to propose candidate clarifications for ambiguous parts of a task.
+ * Returns the parsed list (JSON array preferred; numbered lines fallback).
+ */
+export async function clarifyOptions(task: string, count: number, base: AgentOptions = {}): Promise<string[]> {
+  const clarifier = new Agent({
+    ...base,
+    agentId: 'clarifier',
+    noTools: true,
+    systemPrompt: '你负责澄清需求。识别需求中模糊、需要用户确认的地方，给出候选的澄清方向。只输出 JSON 字符串数组。',
+  });
+  const prompt =
+    `需求：${task}\n\n` +
+    `这个需求有哪些模糊/需要确认的地方？请给出 ${count} 个候选的澄清方向（每个是一个可选的解释或方向，用一句话）。` +
+    '严格只输出 JSON 数组，例如 ["方向一", "方向二", "方向三"]。';
+  const { content } = await clarifier.run(prompt);
+  return parseDirections(content ?? '');
+}
+
+/** Fan out one sub-agent per selected option, each implementing its option (parallel). */
+export async function runFanOut(
+  task: string,
+  options: string[],
+  base: AgentOptions = {},
+): Promise<{ option: string; content: string }[]> {
+  return Promise.all(
+    options.map(async (option, i) => {
+      const agent = new Agent({
+        ...base,
+        agentId: `worker-${i + 1}`,
+        systemPrompt: '你是一个实现者。根据需求和选定方向，给出具体实现方案或产出。',
+      });
+      const { content } = await agent.run(`需求：${task}\n\n选定方向：${option}\n\n请实现这个方向，给出具体方案或产出。`);
+      return { option, content: content ?? '' };
+    }),
+  );
+}
+
 /** Default role roster used when auto-planning a team without an explicit config. */
 export const AUTO_PLAN_ROLES: TeamMember[] = [
   { id: 'strategist', systemPrompt: '你负责制定整体策略与方案。' },
