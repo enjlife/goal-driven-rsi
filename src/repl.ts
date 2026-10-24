@@ -60,7 +60,7 @@ export async function runRepl(env: RunEnv, transcript: Transcript | null, initia
   rl.prompt();
 
   for (;;) {
-    const line = await reader.next();
+    const line = await reader.next(rl.getPrompt());
     if (line === null) break;
     const trimmed = line.trim();
     if (!trimmed) {

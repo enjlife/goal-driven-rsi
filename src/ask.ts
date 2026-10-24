@@ -1,5 +1,6 @@
 import { readSync } from 'node:fs';
 import readline from 'node:readline';
+import { highlightInput } from './tty.js';
 
 function printQuestion(question: string, options?: string[]): void {
   process.stderr.write(`[ask_user] ${question}\n`);
@@ -41,28 +42,33 @@ function readStdinLine(): string {
  */
 export class LineReader {
   private queue: string[] = [];
-  private waiters: ((line: string | null) => void)[] = [];
+  private waiters: { resolve: (line: string | null) => void; prompt?: string }[] = [];
   private closed = false;
 
   constructor(rl: readline.Interface) {
     rl.on('line', (line) => this.push(line));
     rl.on('close', () => {
       this.closed = true;
-      while (this.waiters.length > 0) this.waiters.shift()!(null);
+      while (this.waiters.length > 0) this.waiters.shift()!.resolve(null);
     });
   }
 
   private push(line: string): void {
     const w = this.waiters.shift();
-    if (w) w(line);
-    else this.queue.push(line);
+    if (w) {
+      if (w.prompt !== undefined && line.trim()) highlightInput(w.prompt, line);
+      w.resolve(line);
+    } else this.queue.push(line);
   }
 
-  /** Next line (or null once closed). */
-  next(): Promise<string | null> {
+  /**
+   * Next line (or null once closed). Given the `prompt` shown before it, the
+   * submitted line is repainted with a dark background (TTY only).
+   */
+  next(prompt?: string): Promise<string | null> {
     if (this.queue.length > 0) return Promise.resolve(this.queue.shift()!);
     if (this.closed) return Promise.resolve(null);
-    return new Promise((resolve) => this.waiters.push(resolve));
+    return new Promise((resolve) => this.waiters.push({ resolve, prompt }));
   }
 }
 
@@ -71,7 +77,7 @@ export function askUserVia(reader: LineReader): (question: string, options?: str
   return async (question, options) => {
     printQuestion(question, options);
     process.stderr.write('> ');
-    const answer = await reader.next();
+    const answer = await reader.next('> ');
     return (answer ?? '').trim();
   };
 }
