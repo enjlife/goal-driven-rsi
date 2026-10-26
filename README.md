@@ -9,6 +9,7 @@ This is the foundation for later goal-driven recursive self-improvement: the age
 ```bash
 npm install
 npm run build
+npm link        # optional: install the global `gdrsi` command
 
 # interactive REPL (auto-detects provider from the key you set)
 npm start
@@ -44,10 +45,10 @@ cp models.example.json models.json   # then edit
 Pick one when entering a session; without `-m` the `default` is used:
 
 ```bash
-goal-driven-rsi                  # default profile
-goal-driven-rsi -m deepseek      # a named profile
-goal-driven-rsi --resume -m gpt  # continue a saved session with another model
-goal-driven-rsi --models         # list profiles (* = default)
+gdrsi                  # default profile
+gdrsi -m deepseek      # a named profile
+gdrsi --resume -m gpt  # continue a saved session with another model
+gdrsi --models         # list profiles (* = default)
 ```
 
 In the REPL, `/model` lists profiles and `/model <name>` switches the current session in place.
@@ -96,11 +97,11 @@ Give each sub-agent its own id in a multi-agent setup: `node dist/index.js --age
 ## CLI
 
 ```
-agent                            interactive REPL (/model, /reset, /exit)
-agent -p "prompt"                one-shot
-agent --jsonl                    JSONL protocol on stdin/stdout
-agent --team team.json           run a team of sub-agents toward a goal
-agent --plan plan.json           plan directions -> choose -> allocate a team
+gdrsi                            interactive REPL (/model, /reset, /exit)
+gdrsi -p "prompt"                one-shot
+gdrsi --jsonl                    JSONL protocol on stdin/stdout
+gdrsi --team team.json           run a team of sub-agents toward a goal
+gdrsi --plan plan.json           plan directions -> choose -> allocate a team
 
 -p, --prompt <text>    run a single prompt and exit
 --jsonl                stdin/stdout JSONL line protocol
@@ -191,7 +192,7 @@ then a reviewer agent scores the results. Each member is an `Agent` with its own
 CLI:
 
 ```bash
-goal-driven-rsi --team team.json
+gdrsi --team team.json
 ```
 
 `team.json`:
@@ -244,8 +245,8 @@ agent> /goal 让 CLI 支持流式输出
 Let a planner agent propose candidate directions, you pick one, then it allocates a team:
 
 ```bash
-goal-driven-rsi --plan plan.json            # interactive pick
-goal-driven-rsi --plan plan.json --direction 2   # non-interactive: pick the 2nd
+gdrsi --plan plan.json            # interactive pick
+gdrsi --plan plan.json --direction 2   # non-interactive: pick the 2nd
 ```
 
 `plan.json`:
@@ -286,7 +287,7 @@ See `.env.example` for the full annotated list:
 3. User-level config `~/.config/goal-driven-rsi/.env` (or `$XDG_CONFIG_HOME/goal-driven-rsi/.env`, or override its path with `AGENT_CONFIG`)
 4. Built-in defaults
 
-Put your API key once in the user-level config and every project (and the global `goal-driven-rsi` command) shares it, unless a project exports its own key or `.env`:
+Put your API key once in the user-level config and every project (and the global `gdrsi` command) shares it, unless a project exports its own key or `.env`:
 
 ```bash
 mkdir -p ~/.config/goal-driven-rsi

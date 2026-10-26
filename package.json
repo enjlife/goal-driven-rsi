@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "goal-driven-rsi": "dist/index.js"
+    "gdrsi": "dist/index.js"
   },
   "main": "dist/agent.js",
   "types": "dist/agent.d.ts",

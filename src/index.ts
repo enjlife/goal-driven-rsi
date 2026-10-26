@@ -15,14 +15,14 @@ import { makeAskUser } from './ask.js';
 import { strictInt, truncate } from './util.js';
 import type { AgentEvent, Message } from './types.js';
 
-const HELP = `goal-driven-rsi — minimal local terminal agent
+const HELP = `gdrsi (goal-driven-rsi) — minimal local terminal agent
 
 Usage:
-  agent                            interactive REPL
-  agent -p "prompt"                one-shot (prints final answer to stdout)
-  agent --jsonl                    JSONL protocol: read lines from stdin, emit events to stdout
-  agent --team team.json           run a team of sub-agents toward a goal
-  agent --plan plan.json           plan directions, pick one, then run a team
+  gdrsi                            interactive REPL
+  gdrsi -p "prompt"                one-shot (prints final answer to stdout)
+  gdrsi --jsonl                    JSONL protocol: read lines from stdin, emit events to stdout
+  gdrsi --team team.json           run a team of sub-agents toward a goal
+  gdrsi --plan plan.json           plan directions, pick one, then run a team
 
 Options:
   -p, --prompt <text>    run a single prompt and exit
