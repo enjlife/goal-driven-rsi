@@ -72,6 +72,8 @@ Three minimal tools, defined with JSON Schema and dispatched by the loop:
 | `remember` | Write a long-term memory: a curated insight (`scope: "self"`) or cross-agent shared knowledge (`scope: "shared"`). |
 | `recall` | Search long-term memory across all agents' insights, shared knowledge and journals; omit the query to list your recent journal entries. |
 | `ask_user` | Ask the user a clarifying question (with optional choices) when the request is ambiguous; the user can pick one, several, or type free text. |
+| `spawn_agents` | Delegate 1–8 self-contained sub-tasks to sub-agents running in parallel (at most `AGENT_SUBAGENT_CONCURRENCY`, default 4, at once). Each runs in a fresh conversation with the same model and tools minus `spawn_agents`/`ask_user` (depth 1), under memory id `<agentId>.<task id>`; returns every sub-agent's final answer. Siblings share a batch id; each sub-agent is told its id and its siblings', and its final answer is auto-posted to the board. A failing sub-agent is reported without failing the others. |
+| `read_board` / `post_board` | Read / post to the shared board (`memory/shared/board.jsonl`). Sub-agents default to their batch (sibling notes and finished results); `scope: "all"` and `from: "<agent id>"` widen/narrow it. |
 
 Disable tools entirely with `--no-tools`.
 
@@ -272,7 +274,7 @@ Library: `import { planDirections } from 'goal-driven-rsi'` to get the candidate
 See `.env.example` for the full annotated list:
 
 - Provider: `AGENT_PROVIDER`, `OPENAI_API_KEY`/`OPENAI_BASE_URL`/`OPENAI_MODEL`, `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL`/`ANTHROPIC_MODEL`/`ANTHROPIC_MAX_TOKENS`
-- Behaviour: `AGENT_WORKDIR`, `AGENT_MAX_TURNS`, `AGENT_SHELL_TIMEOUT_MS`, `AGENT_SYSTEM_PROMPT`
+- Behaviour: `AGENT_WORKDIR`, `AGENT_MAX_TURNS`, `AGENT_SHELL_TIMEOUT_MS`, `AGENT_SYSTEM_PROMPT`, `AGENT_SUBAGENT_CONCURRENCY`
 - Models: `AGENT_MODELS_FILE`, `AGENT_MODEL` (see [Multiple models](#multiple-models-modelsjson))
 - Memory: `AGENT_MEMORY_DIR`, `AGENT_ID`
 - Skills: `AGENT_SKILLS_DIR`
@@ -311,7 +313,7 @@ src/
   util.ts           truncate / sleep / strictInt helpers
   memory/           store.ts (MemoryStore) + search.ts (zero-dep keyword ranking)
   providers/        provider.ts (interface+factory), openai.ts, anthropic.ts, mock.ts
-  tools/            registry.ts, shell.ts, files.ts, memory.ts
+  tools/            registry.ts, shell.ts, files.ts, memory.ts, skill.ts, subagent.ts (spawn_agents), board.ts
 ```
 
 ## Notes

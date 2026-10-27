@@ -15,7 +15,9 @@ export interface BoardPost {
   ts: string;
   id: string;
   from: string;
-  kind: 'proposal' | 'review' | 'comment';
+  kind: 'proposal' | 'review' | 'comment' | 'note' | 'result';
+  /** spawn_agents batch the post belongs to (sibling sub-agents share one). */
+  batch?: string;
   goal?: string;
   content: string;
 }
@@ -29,7 +31,7 @@ export interface BoardPost {
 export class MemoryStore {
   constructor(
     private readonly root: string,
-    private readonly agentId: string,
+    readonly agentId: string,
   ) {
     mkdirSync(this.selfDir(), { recursive: true });
     mkdirSync(this.sharedDir(), { recursive: true });
@@ -114,8 +116,11 @@ export class MemoryStore {
     return full;
   }
 
-  /** Read the most recent board posts (oldest-first within the window). */
-  readBoard(limit = 50): BoardPost[] {
+  /**
+   * Read the most recent board posts (oldest-first within the window), optionally
+   * filtered by batch and author (`from` matches a full agent id or its last segment).
+   */
+  readBoard(limit = 50, filter: { batch?: string; from?: string } = {}): BoardPost[] {
     const path = this.boardPath();
     if (!existsSync(path)) return [];
     const posts: BoardPost[] = [];
@@ -127,7 +132,11 @@ export class MemoryStore {
         // skip malformed lines
       }
     }
-    return posts.slice(-limit);
+    const { batch, from } = filter;
+    return posts
+      .filter((p) => !batch || p.batch === batch)
+      .filter((p) => !from || p.from === from || p.from.endsWith(`.${from}`))
+      .slice(-limit);
   }
 
   appendJournal(entry: { kind: JournalEntry['kind']; summary: string }): void {

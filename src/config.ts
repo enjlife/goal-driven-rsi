@@ -19,6 +19,8 @@ export interface Config {
   retry: { maxRetries: number; baseMs: number };
   maxContextTokens: number;
   maxToolResultChars: number;
+  /** Max sub-agents `spawn_agents` runs at once. */
+  subagentConcurrency: number;
   openai: { apiKey?: string; baseUrl: string; model: string };
   anthropic: { apiKey?: string; authToken?: string; baseUrl: string; model: string; maxTokens: number };
 }
@@ -27,7 +29,8 @@ const DEFAULT_SYSTEM_PROMPT =
   'You are a helpful terminal agent. You have tools available to run shell commands and read/write files. ' +
   'Use a tool when it helps complete the user goal; otherwise answer directly. Be concise. ' +
   'You also have long-term memory (remember/recall) and reusable skills (list_skills/read_skill/create_skill); use them when they help. ' +
-  'If the request is ambiguous or needs the user to choose a direction, ask the user with the ask_user tool first, then continue; do not over-ask.';
+  'If the request is ambiguous or needs the user to choose a direction, ask the user with the ask_user tool first, then continue; do not over-ask. ' +
+  'For large work that splits into independent sub-tasks, you may delegate them to parallel sub-agents with spawn_agents.';
 
 /** Parse a `.env`-style file into a map (missing file -> empty map). */
 function parseEnvFile(path: string): Record<string, string> {
@@ -317,6 +320,7 @@ export function loadConfig(overrides: ConfigOverrides = {}): Config {
     },
     maxContextTokens: profile?.maxContextTokens ?? intEnv('AGENT_MAX_CONTEXT_TOKENS', 128000, 1),
     maxToolResultChars: intEnv('AGENT_MAX_TOOL_RESULT_CHARS', 8000, 1),
+    subagentConcurrency: intEnv('AGENT_SUBAGENT_CONCURRENCY', 4, 1),
     openai,
     anthropic,
   };

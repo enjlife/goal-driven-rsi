@@ -4,7 +4,7 @@ import type { ChatProvider } from './provider.js';
 /**
  * Deterministic offline provider for testing the loop, tools, and JSONL plumbing
  * without an API key. Triggers a tool call based on the user text (run_shell /
- * ask_user), then answers with fixed text that echoes the last tool result.
+ * ask_user / spawn_agents / board), then answers with fixed text that echoes the last tool result.
  */
 export class MockProvider implements ChatProvider {
   readonly name = 'mock';
@@ -15,6 +15,16 @@ export class MockProvider implements ChatProvider {
     const toolRan = messages.some((m) => m.role === 'tool');
     const hasShell = tools.some((t) => t.name === 'run_shell');
     const hasAsk = tools.some((t) => t.name === 'ask_user');
+    const hasSpawn = tools.some((t) => t.name === 'spawn_agents');
+    const hasBoard = tools.some((t) => t.name === 'post_board');
+
+    if (!toolRan && hasSpawn && /delegate|subagent|子\s*agent/i.test(text)) {
+      const tasks = [
+        { id: 'alpha', task: 'sub-task alpha' },
+        { id: 'beta', task: 'sub-task beta' },
+      ];
+      return { content: null, tool_calls: [{ id: 'mock-1', name: 'spawn_agents', arguments: JSON.stringify({ tasks }) }] };
+    }
 
     if (!toolRan && hasAsk && /ask|confirm|clarify|choose|选择|确认|澄清/i.test(text)) {
       return {
@@ -23,6 +33,14 @@ export class MockProvider implements ChatProvider {
           { id: 'mock-1', name: 'ask_user', arguments: JSON.stringify({ question: '请选择一个方向', options: ['方向A', '方向B', '方向C'] }) },
         ],
       };
+    }
+
+    if (!toolRan && hasBoard && /^sub-task/i.test(text)) {
+      return { content: null, tool_calls: [{ id: 'mock-1', name: 'post_board', arguments: JSON.stringify({ content: `note from ${text}` }) }] };
+    }
+
+    if (!toolRan && hasBoard && /board/i.test(text)) {
+      return { content: null, tool_calls: [{ id: 'mock-1', name: 'read_board', arguments: JSON.stringify({ scope: 'all', limit: 10 }) }] };
     }
 
     if (!toolRan && hasShell && /parallel/i.test(text)) {

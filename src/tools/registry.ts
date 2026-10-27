@@ -5,6 +5,8 @@ import { runShell } from './shell.js';
 import { readFile, writeFile } from './files.js';
 import { remember, recall } from './memory.js';
 import { listSkills, readSkill, createSkill } from './skill.js';
+import { readBoard, postBoard } from './board.js';
+import { spawnAgents, MAX_SUBAGENT_TASKS, type SubagentRuntime } from './subagent.js';
 
 export interface ToolContext {
   cwd: string;
@@ -13,9 +15,50 @@ export interface ToolContext {
   skills: SkillStore;
   /** Interactive user-input callback for the `ask_user` tool (undefined = unavailable). */
   askUser?: (question: string, options?: string[]) => Promise<string>;
+  /** Sub-agent runtime for the `spawn_agents` tool (undefined = unavailable). */
+  subagents?: SubagentRuntime;
+  /** spawn_agents batch this agent runs in (sub-agents only); scopes the board tools. */
+  batch?: string;
 }
 
-export function toolDefs(): ToolDef[] {
+/** All tool definitions; `spawn_agents` is opt-in so sub-agents never see it. */
+export function toolDefs(opts: { subagents?: boolean; askUser?: boolean } = {}): ToolDef[] {
+  const defs = baseToolDefs().filter((d) => opts.askUser !== false || d.name !== 'ask_user');
+  return opts.subagents ? [...defs, SPAWN_AGENTS_DEF] : defs;
+}
+
+const SPAWN_AGENTS_DEF: ToolDef = {
+  name: 'spawn_agents',
+  description:
+    'Delegate independent sub-tasks to sub-agents that run in parallel, each in a fresh conversation with the same tools ' +
+    '(except spawn_agents and ask_user). Returns each sub-agent\'s final answer. Use for work that splits cleanly ' +
+    '(e.g. investigate several modules, try alternative approaches); do the work yourself for small or tightly coupled tasks. ' +
+    'Sub-agents see nothing of this conversation, so each `task` must be self-contained.',
+  parameters: {
+    type: 'object',
+    properties: {
+      tasks: {
+        type: 'array',
+        maxItems: MAX_SUBAGENT_TASKS,
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Short role/name, e.g. "researcher"; also the sub-agent memory namespace.' },
+            task: { type: 'string', description: 'Self-contained instructions, including all needed context and the expected output.' },
+            system_prompt: { type: 'string', description: 'Optional role prompt for this sub-agent.' },
+          },
+          required: ['task'],
+          additionalProperties: false,
+        },
+        description: `1-${MAX_SUBAGENT_TASKS} sub-tasks to run in parallel.`,
+      },
+    },
+    required: ['tasks'],
+    additionalProperties: false,
+  },
+};
+
+function baseToolDefs(): ToolDef[] {
   return [
     {
       name: 'run_shell',
@@ -86,6 +129,34 @@ export function toolDefs(): ToolDef[] {
           query: { type: 'string', description: 'Search terms; omit to list recent entries.' },
           max_results: { type: 'number', description: 'Max results to return (default 5).' },
         },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'read_board',
+      description:
+        'Read the shared board where agents post findings and results. As a sub-agent, defaults to posts from your batch ' +
+        '(your sibling sub-agents, including their final results once they finish); scope "all" reads the whole board.',
+      parameters: {
+        type: 'object',
+        properties: {
+          from: { type: 'string', description: 'Only posts by this agent (full id like "main.alpha", or just "alpha").' },
+          scope: { type: 'string', enum: ['batch', 'all'], description: 'batch (default for sub-agents) or all.' },
+          limit: { type: 'number', description: 'Max most-recent posts to return (default 20).' },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'post_board',
+      description:
+        'Post an interim finding, decision or question to the shared board so other agents (e.g. sibling sub-agents working in parallel) can read it.',
+      parameters: {
+        type: 'object',
+        properties: {
+          content: { type: 'string', description: 'What to share; make it understandable without your conversation.' },
+        },
+        required: ['content'],
         additionalProperties: false,
       },
     },
@@ -190,6 +261,10 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<Too
         return remember(ctx.memory, args);
       case 'recall':
         return recall(ctx.memory, args);
+      case 'read_board':
+        return readBoard(ctx.memory, args, ctx.batch);
+      case 'post_board':
+        return postBoard(ctx.memory, args, ctx.batch);
       case 'list_skills':
         return listSkills(ctx.skills);
       case 'read_skill':
@@ -206,6 +281,8 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<Too
         const answer = await ctx.askUser(question, options);
         return { ok: true, output: answer || '(no answer)' };
       }
+      case 'spawn_agents':
+        return spawnAgents(ctx.subagents, args);
       default:
         return { ok: false, error: `unknown tool: ${call.name}` };
     }
