@@ -54,3 +54,71 @@ export function trimHistory(messages: Message[], maxContextTokens: number): void
   messages.length = 0;
   messages.push(...system, ...turns.flat());
 }
+
+/** Compact the conversation once the context reaches this share of the window. */
+export const COMPACT_RATIO = 0.7;
+
+const SUMMARY_PROMPT = [
+  'You compress an agent conversation so it can continue in a smaller context. The agent will see only your summary',
+  'plus the latest user turn, so keep everything needed to carry on. Write in the user\'s language, using exactly these',
+  'sections (write "none" for an empty one):',
+  '',
+  '## Goals',
+  'Every goal and requirement the user stated, including constraints and preferences; keep them faithful, not reworded away.',
+  '## Approach',
+  'The chosen solution/plan and key decisions with their reasons; alternatives that were rejected and why.',
+  '## Conclusions',
+  'What has been done and established: results, findings, verified facts, plus the concrete details needed to continue',
+  '(file paths, commands, identifiers, error messages).',
+  '## TODO',
+  'A checklist of remaining work and open questions: "- [ ] item" for pending, "- [x] item" for done in this span.',
+  '',
+  'If a [previous summary] is included, merge it: keep its goals, update its approach and conclusions, and carry its',
+  'TODO items forward, ticking off the ones now done. Output only the summary.',
+].join('\n');
+
+const SUMMARY_HEADER = '[Summary of the earlier conversation (compacted to save context)]\n';
+
+/** Max chars per message when serializing old turns for the summarizer. */
+const SUMMARY_MESSAGE_CHARS = 2000;
+
+/** Plain-text rendering of messages for the summarizer (tool output clipped). */
+function renderForSummary(messages: Message[]): string {
+  const clip = (s: string): string => (s.length > SUMMARY_MESSAGE_CHARS ? `${s.slice(0, SUMMARY_MESSAGE_CHARS)}…` : s);
+  return messages
+    .map((m) => {
+      if (m.summary) return `[previous summary]\n${m.content ?? ''}`;
+      if (m.role === 'tool') return `[tool result${m.tool_error ? ' (error)' : ''}]\n${clip(m.content ?? '')}`;
+      const calls = (m.tool_calls ?? []).map((c) => `\n[tool call] ${c.name} ${clip(c.arguments)}`).join('');
+      return `[${m.role}]\n${clip(m.content ?? '')}${calls}`;
+    })
+    .join('\n\n');
+}
+
+/**
+ * Summarize every turn except the latest one into a single system message, keeping
+ * the base system prompt(s) and the latest user turn verbatim. Mutates `messages`
+ * in place; returns false when there is nothing older than the latest turn.
+ * `summarize` receives the summarizer prompt plus the rendered transcript.
+ */
+export async function compactHistory(
+  messages: Message[],
+  summarize: (prompt: Message[]) => Promise<string | null>,
+): Promise<boolean> {
+  const base = messages.filter((m) => m.role === 'system' && !m.summary);
+  const lastUser = messages.map((m) => m.role).lastIndexOf('user');
+  if (lastUser < 0) return false;
+  const older = messages.slice(0, lastUser).filter((m) => m.role !== 'system' || m.summary);
+  if (!older.some((m) => !m.summary)) return false;
+
+  const text = await summarize([
+    { role: 'system', content: SUMMARY_PROMPT },
+    { role: 'user', content: renderForSummary(older) },
+  ]);
+  if (!text?.trim()) throw new Error('summarizer returned an empty summary');
+
+  const latest = messages.slice(lastUser).filter((m) => m.role !== 'system');
+  messages.length = 0;
+  messages.push(...base, { role: 'system', content: SUMMARY_HEADER + text.trim(), summary: true }, ...latest);
+  return true;
+}

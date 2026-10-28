@@ -11,6 +11,12 @@ export interface JournalEntry {
   summary: string;
 }
 
+/** A saved conversation: working context plus the full uncompacted history. */
+export interface StoredSession {
+  messages: Message[];
+  history: Message[];
+}
+
 export interface BoardPost {
   ts: string;
   id: string;
@@ -73,19 +79,26 @@ export class MemoryStore {
     return join(this.sessionsDir(), `${id}.json`);
   }
 
-  /** Persist a conversation under its session id so `--resume` can restore it. */
-  saveSession(id: string, messages: Message[]): void {
+  /**
+   * Persist a conversation under its session id so `--resume` can restore it.
+   * `history` is the full original record; `messages` the (possibly compacted) context.
+   */
+  saveSession(id: string, session: StoredSession): void {
     mkdirSync(this.sessionsDir(), { recursive: true });
-    writeFileSync(this.sessionPath(id), JSON.stringify(messages), 'utf8');
+    const file = { history: session.history, context: session.messages };
+    writeFileSync(this.sessionPath(id), JSON.stringify(file), 'utf8');
   }
 
-  /** Load a saved conversation by id (undefined if none / corrupt). */
-  loadSession(id: string): Message[] | undefined {
+  /** Load a saved conversation by id (undefined if none / corrupt). Accepts the legacy array format. */
+  loadSession(id: string): StoredSession | undefined {
     const path = this.sessionPath(id);
     if (!existsSync(path)) return undefined;
     try {
       const parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
-      return Array.isArray(parsed) ? (parsed as Message[]) : undefined;
+      if (Array.isArray(parsed)) return { messages: parsed as Message[], history: [...(parsed as Message[])] };
+      const o = parsed as { history?: unknown; context?: unknown } | null;
+      if (!o || !Array.isArray(o.history) || !Array.isArray(o.context)) return undefined;
+      return { messages: o.context as Message[], history: o.history as Message[] };
     } catch {
       return undefined;
     }
@@ -99,7 +112,7 @@ export class MemoryStore {
     for (const name of readdirSync(dir)) {
       if (!name.endsWith('.json')) continue;
       const id = name.slice(0, -'.json'.length);
-      const firstUser = (this.loadSession(id) ?? []).find((m) => m.role === 'user');
+      const firstUser = (this.loadSession(id)?.history ?? []).find((m) => m.role === 'user');
       out.push({ id, preview: truncate((firstUser?.content ?? '').trim() || '(empty)', 60) });
     }
     return out.sort((a, b) => (a.id < b.id ? 1 : -1)); // ISO ids sort newest-first lexicographically

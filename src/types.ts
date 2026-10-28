@@ -24,12 +24,21 @@ export interface Message {
    * (required for multi-turn history to stay append-only).
    */
   raw?: unknown;
+  /** Marks a system message holding the summary of compacted earlier turns. */
+  summary?: boolean;
+}
+
+/** Token usage reported by the provider for one call. */
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
 }
 
 export interface AssistantMessage {
   content: string | null;
   tool_calls: ToolCall[];
   raw?: unknown;
+  usage?: Usage;
 }
 
 export interface ToolDef {
@@ -53,4 +62,8 @@ export type AgentEvent =
   | { type: 'tool_call'; id: string; name: string; arguments: string }
   | { type: 'tool_result'; id: string; name: string; ok: boolean; arguments: string; output: string }
   | { type: 'done'; content: string | null }
+  /** Context size after a reply: tokens currently in the model context vs. the window. */
+  | { type: 'context'; tokens: number; maxTokens: number; estimated: boolean }
+  /** Earlier turns were summarized to shrink the context (the session file keeps the originals). */
+  | { type: 'compact'; before: number; after: number }
   | { type: 'error'; message: string };

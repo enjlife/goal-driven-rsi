@@ -145,7 +145,10 @@ export class AnthropicProvider implements ChatProvider {
       });
     }
 
-    let data: { content: AnthropicContentBlock[] };
+    let data: {
+      content: AnthropicContentBlock[];
+      usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
+    };
     try {
       data = (await res.json()) as typeof data;
     } catch (e) {
@@ -167,10 +170,15 @@ export class AnthropicProvider implements ChatProvider {
       // thinking / redacted_thinking blocks are preserved via `raw`, not rendered.
     }
 
+    const u = data.usage;
     return {
       content: contentParts.length > 0 ? contentParts.join('') : null,
       tool_calls,
       raw: data.content,
+      usage: u && {
+        inputTokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0),
+        outputTokens: u.output_tokens ?? 0,
+      },
     };
   }
 }

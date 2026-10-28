@@ -205,10 +205,10 @@ async function pickSession(count: number): Promise<number | null> {
 /** Resolve the starting session from --resume / --resume-id (or a fresh one). */
 async function resolveSession(env: RunEnv, args: CliArgs): Promise<Session | null> {
   if (args.resumeId) {
-    const messages = env.memory.loadSession(args.resumeId);
-    if (messages) {
-      process.stderr.write(`[resume] restored session ${args.resumeId} (${messages.length} messages)\n${recap(messages)}\n`);
-      return { id: args.resumeId, messages };
+    const saved = env.memory.loadSession(args.resumeId);
+    if (saved) {
+      process.stderr.write(`[resume] restored session ${args.resumeId} (${saved.history.length} messages)\n${recap(saved.history)}\n`);
+      return { id: args.resumeId, ...saved };
     }
     process.stderr.write(`[resume] session not found: ${args.resumeId}; starting fresh\n`);
     return newSession(env);
@@ -226,9 +226,9 @@ async function resolveSession(env: RunEnv, args: CliArgs): Promise<Session | nul
     const pick = await pickSession(sessions.length);
     if (pick === null) return null;
     const chosen = sessions[pick];
-    const messages = env.memory.loadSession(chosen.id)!;
-    process.stderr.write(`[resume] restored ${chosen.id}\n${recap(messages)}\n`);
-    return { id: chosen.id, messages };
+    const saved = env.memory.loadSession(chosen.id)!;
+    process.stderr.write(`[resume] restored ${chosen.id}\n${recap(saved.history)}\n`);
+    return { id: chosen.id, ...saved };
   }
 
   return newSession(env);

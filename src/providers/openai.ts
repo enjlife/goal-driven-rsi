@@ -83,7 +83,10 @@ export class OpenAIProvider implements ChatProvider {
       });
     }
 
-    let data: { choices: { message: { content?: string | null; tool_calls?: unknown[] } }[] };
+    let data: {
+      choices: { message: { content?: string | null; tool_calls?: unknown[] } }[];
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
     try {
       data = (await res.json()) as typeof data;
     } catch (e) {
@@ -98,6 +101,11 @@ export class OpenAIProvider implements ChatProvider {
       return { id: t.id, name: t.function.name, arguments: t.function.arguments };
     });
 
-    return { content: msg.content ?? null, tool_calls };
+    const u = data.usage;
+    return {
+      content: msg.content ?? null,
+      tool_calls,
+      usage: u && { inputTokens: u.prompt_tokens ?? 0, outputTokens: u.completion_tokens ?? 0 },
+    };
   }
 }

@@ -16,10 +16,14 @@ export interface RunEnv {
   systemPrompt: string;
 }
 
-/** A named, resumable conversation: its id plus the message history. */
+/**
+ * A named, resumable conversation. `messages` is the working context sent to the
+ * model (may be compacted); `history` is the full, never-compacted record.
+ */
 export interface Session {
   id: string;
   messages: Message[];
+  history: Message[];
 }
 
 /** Fresh conversation state: a single system message. */
@@ -29,7 +33,8 @@ export function newMessages(env: RunEnv): Message[] {
 
 /** Start a new session with a fresh (timestamped) id. */
 export function newSession(env: RunEnv, id?: string): Session {
-  return { id: id ?? env.memory.newSessionId(), messages: newMessages(env) };
+  const messages = newMessages(env);
+  return { id: id ?? env.memory.newSessionId(), messages, history: [...messages] };
 }
 
 /** Run one user turn to completion; mutates the session and emits events. */
@@ -44,16 +49,23 @@ export async function runTurn(
     env.memory.record(e);
   };
   emit({ type: 'request', role: 'user', content });
-  session.messages.push({ role: 'user', content });
-  const outcome = await runAgent(env.provider, env.tools, session.messages, {
-    maxTurns: env.maxTurns,
-    toolContext: env.toolContext,
-    maxContextTokens: env.maxContextTokens,
-    maxToolResultChars: env.maxToolResultChars,
-    onEvent: emit,
-  });
-  env.memory.saveSession(session.id, session.messages);
-  return outcome;
+  const user: Message = { role: 'user', content };
+  session.messages.push(user);
+  session.history.push(user);
+  try {
+    const outcome = await runAgent(env.provider, env.tools, session.messages, {
+      maxTurns: env.maxTurns,
+      toolContext: env.toolContext,
+      maxContextTokens: env.maxContextTokens,
+      maxToolResultChars: env.maxToolResultChars,
+      onEvent: emit,
+      onMessage: (m) => session.history.push(m),
+    });
+    emit({ type: 'context', tokens: outcome.contextTokens, maxTokens: env.maxContextTokens, estimated: outcome.contextEstimated });
+    return outcome;
+  } finally {
+    env.memory.saveSession(session.id, session);
+  }
 }
 
 /**
@@ -64,6 +76,16 @@ const MAX_RESULT_CHARS = 500;
 
 function isColor(stream: NodeJS.WritableStream): boolean {
   return (stream as { isTTY?: boolean }).isTTY === true;
+}
+
+function formatTokens(n: number): string {
+  return n.toLocaleString('en-US');
+}
+
+/** Local wall-clock time as YYYY-MM-DD HH:mm:ss. */
+function formatTime(d: Date): string {
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 export function printHuman(
@@ -98,6 +120,15 @@ export function printHuman(
     case 'error':
       err.write(`${errorTag} ${e.message}\n`);
       break;
+    case 'compact':
+      err.write(dim(`[compact] context ${formatTokens(e.before)} -> ${formatTokens(e.after)} tokens (full history kept in the session file)`) + '\n');
+      break;
+    case 'context': {
+      const pct = e.maxTokens > 0 ? Math.round((e.tokens / e.maxTokens) * 100) : 0;
+      const approx = e.estimated ? '~' : '';
+      err.write(dim(`[${formatTime(new Date())}] context ${approx}${formatTokens(e.tokens)} / ${formatTokens(e.maxTokens)} tokens (${pct}%)`) + '\n');
+      break;
+    }
     case 'request':
     case 'done':
       break;

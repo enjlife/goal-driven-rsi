@@ -60,20 +60,22 @@ export class Session {
     private readonly env: RunEnv,
     readonly id: string,
     private readonly messages: Message[],
+    private readonly history: Message[],
   ) {}
 
   static start(env: RunEnv, id?: string): Session {
     const s = newSession(env, id);
-    return new Session(env, s.id, s.messages);
+    return new Session(env, s.id, s.messages, s.history);
   }
 
   static resume(env: RunEnv, id: string): Session | undefined {
-    const messages = env.memory.loadSession(id);
-    return messages ? new Session(env, id, messages) : undefined;
+    const saved = env.memory.loadSession(id);
+    return saved ? new Session(env, id, saved.messages, saved.history) : undefined;
   }
 
   async ask(content: string, onEvent?: (e: AgentEvent) => void): Promise<RunResult> {
-    const { message, turns, stopped } = await runTurn(this.env, { id: this.id, messages: this.messages }, content, onEvent);
+    const session = { id: this.id, messages: this.messages, history: this.history };
+    const { message, turns, stopped } = await runTurn(this.env, session, content, onEvent);
     return { content: message.content, turns, stopped };
   }
 }
