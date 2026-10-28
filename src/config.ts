@@ -318,7 +318,7 @@ export function loadConfig(overrides: ConfigOverrides = {}): Config {
       maxRetries: intEnv('AGENT_MAX_RETRIES', 3, 0),
       baseMs: intEnv('AGENT_RETRY_BASE_MS', 1000, 0),
     },
-    maxContextTokens: profile?.maxContextTokens ?? intEnv('AGENT_MAX_CONTEXT_TOKENS', 128000, 1),
+    maxContextTokens: profile?.maxContextTokens ?? intEnv('AGENT_MAX_CONTEXT_TOKENS', 1000000, 1),
     maxToolResultChars: intEnv('AGENT_MAX_TOOL_RESULT_CHARS', 8000, 1),
     subagentConcurrency: intEnv('AGENT_SUBAGENT_CONCURRENCY', 4, 1),
     openai,

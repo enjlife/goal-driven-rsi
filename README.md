@@ -146,7 +146,7 @@ Two flavours, sharing one event schema:
 {"type":"tool_result","id":"...","name":"run_shell","ok":true,"output":"..."}
 {"type":"done","content":"final answer or null"}
 {"type":"compact","before":91234,"after":8120}
-{"type":"context","tokens":12345,"maxTokens":128000,"estimated":false}
+{"type":"context","tokens":12345,"maxTokens":1000000,"estimated":false}
 {"type":"error","message":"..."}
 ```
 
@@ -325,7 +325,7 @@ src/
 - Multiple tool calls in one turn run **in parallel** (`Promise.all`); results are fed back in order.
 - The turn budget is a **soft limit**: the model is nudged to wrap up on the final turn, repeated identical tool calls stop the loop early, and hitting the limit returns a graceful note instead of throwing.
 - Retryable API errors (429/5xx/network) retry with exponential backoff + jitter; non-retryable errors (400/401/403) fail fast.
-- After every reply the time and current context size are printed (stderr), e.g. `[2026-10-27 17:56:20] context 12,345 / 128,000 tokens (10%)`. The size comes from the provider's reported usage (last prompt + reply); `~` marks a local estimate (mock provider, or right after compaction). The window is `maxContextTokens` (profile) / `AGENT_MAX_CONTEXT_TOKENS`.
+- After every reply the time and current context size are printed (stderr), e.g. `[2026-10-27 17:56:20] context 12,345 / 1,000,000 tokens (1%)`. The size comes from the provider's reported usage (last prompt + reply); `~` marks a local estimate (mock provider, or right after compaction). The window is `maxContextTokens` (profile) / `AGENT_MAX_CONTEXT_TOKENS`.
 - **Compaction**: once the context reaches 70% of the window (checked before each model call and after the final reply), every turn except the latest is summarized by the model into one system message. Only the working context shrinks — the session file's `history` keeps the original messages, and the JSONL transcript is untouched.
 - As a fallback (e.g. a summary call fails, or a single turn is too big), history is trimmed with a sliding window (drop oldest user-turns) at 80% of the window; oversized `tool_result` output is truncated before reaching the model.
 - The Anthropic provider preserves and echoes back thinking blocks so multi-turn history stays append-only.
